@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultRevealAt, fromManilaInputValue, nextChristmas, timeParts, toManilaInputValue } from "./christmas";
+import { slugFromLink } from "./exchange-link";
 import { buildManifest, isSingleLoop, parseManifest } from "./manifest";
 import { formatPeso, parsePesoToCentavos } from "./money";
 import { isWebUrl, normalizeWebUrl, storeNameFor } from "./stores";
@@ -173,6 +174,22 @@ describe("codes", () => {
     expect(await verifyCode(" Snow FROST  holly\nivy ", hash)).toBe(true);
     expect(await verifyCode("snow-frost-holly-pine", hash)).toBe(false);
     expect(normalizeCode("a b")).toBe("a-b");
+  });
+});
+
+describe("exchange links", () => {
+  it.each([
+    ["https://christmas-exchange-gift.vercel.app/x/noche-parcel-77", "noche-parcel-77"],
+    ["https://christmas-exchange-gift.vercel.app/x/noche-parcel-77/", "noche-parcel-77"],
+    ["https://christmas-exchange-gift.vercel.app/x/noche-parcel-77/join", "noche-parcel-77"],
+    ["https://christmas-exchange-gift.vercel.app/x/noche-parcel-77?ref=messenger", "noche-parcel-77"],
+    ["christmas-exchange-gift.vercel.app/x/noche-parcel-77", "noche-parcel-77"],
+    ["  noche-parcel-77  ", "noche-parcel-77"],
+    ["noche-parcel-77/", "noche-parcel-77"],
+    ["", ""],
+    ["   ", ""],
+  ])("reads %j", (input, expected) => {
+    expect(slugFromLink(input)).toBe(expected);
   });
 });
 
