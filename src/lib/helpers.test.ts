@@ -162,7 +162,7 @@ describe("codes", () => {
   });
 
   it("generates codes of the right shape", () => {
-    expect(generateElfCode()).toMatch(/^[a-z]+(-[a-z]+){3}$/);
+    for (let run = 0; run < 2000; run++) expect(generateElfCode()).toMatch(/^\d{6}$/);
     expect(generateOrganizerCode()).toMatch(/^[a-z]+(-[a-z]+){5}$/);
     expect(generateSlug()).toMatch(/^[a-z]+-[a-z]+-\d{2}$/);
   });
@@ -173,6 +173,22 @@ describe("codes", () => {
     expect(await verifyCode(" Snow FROST  holly\nivy ", hash)).toBe(true);
     expect(await verifyCode("snow-frost-holly-pine", hash)).toBe(false);
     expect(normalizeCode("a b")).toBe("a-b");
+  });
+});
+
+describe("6-digit Elf Codes", () => {
+  it.each(["482913", "482 913", "482-913", " 4 8 2 9 1 3 "])("accepts %j", async (typed) => {
+    expect(await verifyCode(typed, await hashCode("482913"))).toBe(true);
+  });
+
+  it("keeps leading zeros significant", async () => {
+    const hash = await hashCode("012345");
+    expect(await verifyCode("012345", hash)).toBe(true);
+    expect(await verifyCode("12345", hash)).toBe(false);
+  });
+
+  it.each(["482914", "48291", "4829133", "abcdef", ""])("rejects %j", async (typed) => {
+    expect(await verifyCode(typed, await hashCode("482913"))).toBe(false);
   });
 });
 

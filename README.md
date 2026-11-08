@@ -93,7 +93,8 @@ Limits you should know about:
 - **Whoever holds both database and `APP_SECRET` access can decrypt.** That is whoever deploys this. They would have to write code to do it on purpose, but it isn't impossible.
 - **Christmas Night can be moved earlier before the draw.** Every change appears in the public log.
 - **The seal proves nothing changed after sealing.** It can't prove the draw was never reset and rerun, which is why resets are logged publicly with a reason.
-- **Wrong guesses can lock someone out for 15 minutes.** The limit is per person, so a relative guessing at someone's code can temporarily block them. A new code from the organizer clears it.
+- **Elf Codes are 6 digits, chosen because they're easy to type.** That is far fewer combinations than words, so guessing is limited to 6 tries per person per hour. Someone guessing nonstop from now until Christmas would still have only about a 1 in 150 chance of hitting a given person's code.
+- **Wrong guesses can lock someone out for an hour.** The limit is per person, so a relative guessing at someone's code can temporarily block them. A new code from the organizer clears it.
 
 ## Commands
 

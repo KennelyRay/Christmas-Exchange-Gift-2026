@@ -235,6 +235,7 @@ export function EnvelopeClient({ slug, participants }: { slug: string; participa
   const [envelope, setEnvelope] = useState<EnvelopeView | null>(null);
   const [opened, setOpened] = useState(false);
   const [style, setStyle] = useState<"envelope" | "box">("envelope");
+  const [hasWordCode, setHasWordCode] = useState(false);
   const families = groupByFamily(participants).sort((a, b) => a.label.localeCompare(b.label));
 
   async function unlock(event: FormEvent) {
@@ -338,11 +339,19 @@ export function EnvelopeClient({ slug, participants }: { slug: string; participa
               )}
             </Field>
 
-            <Field label="Elf Code" helper="Four words. Capitals and spaces don't matter.">
-              {(props) => (
-                <input {...props} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="snow-cocoa-parol-robin" className={inputClass} />
-              )}
+            <Field label="Elf Code" helper={hasWordCode ? "Capitals and spaces don't matter." : "The 6 numbers you saved when you joined."}>
+              {(props) =>
+                hasWordCode ? (
+                  <input {...props} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="snow-cocoa-parol-robin" className={inputClass} />
+                ) : (
+                  <input {...props} value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="off" placeholder="123456" className={`${inputClass} text-3xl! tracking-[0.2em] tabular-nums`} />
+                )
+              }
             </Field>
+
+            <button type="button" onClick={() => setHasWordCode(!hasWordCode)} className="-mt-3 min-h-11 w-fit text-left text-sm font-semibold underline underline-offset-4">
+              {hasWordCode ? "My code is 6 numbers" : "My code is made of words"}
+            </button>
 
             {error && <ErrorNote>{error}</ErrorNote>}
 

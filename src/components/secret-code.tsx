@@ -17,6 +17,7 @@ type SecretCodeProps = {
 export function SecretCode({ label, code, explanation, confirmLabel, onDone, doneLabel }: SecretCodeProps) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const isNumeric = /^\d+$/.test(code);
 
   useEffect(() => {
     if (saved) return;
@@ -40,8 +41,8 @@ export function SecretCode({ label, code, explanation, confirmLabel, onDone, don
       <div className="-rotate-1 rounded-3xl border-2 border-dashed border-gold-deep bg-gold/40 p-5 sm:p-6">
         <p className="font-display text-2xl font-semibold text-wax-deep">Screenshot this!</p>
         <p className="mt-3 text-sm font-semibold">{label}</p>
-        <p className="mt-1 font-display text-3xl leading-tight font-semibold break-words sm:text-4xl">
-          {code.split("-").join(" · ")}
+        <p className={`mt-1 font-display leading-tight font-semibold break-words ${isNumeric ? "text-6xl tabular-nums" : "text-3xl sm:text-4xl"}`}>
+          {isNumeric ? `${code.slice(0, 3)} ${code.slice(3)}` : code.split("-").join(" · ")}
         </p>
       </div>
 

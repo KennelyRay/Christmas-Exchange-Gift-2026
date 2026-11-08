@@ -10,7 +10,9 @@ import type { Exchange } from "./exchanges";
 import { ApiError } from "./http";
 import { clearLimit, enforceLimits, ipKey, refundLimits } from "./rate-limit";
 
-const LOCK_WINDOW_SECONDS = 15 * 60;
+const NETWORK_WINDOW_SECONDS = 15 * 60;
+/** A 6-digit code is short, so guessing has to stay slow. A reissued code clears this. */
+const PERSON_WINDOW_SECONDS = 60 * 60;
 
 export const elfLimitKey = (participantId: string) => `elf:${participantId}`;
 
@@ -19,8 +21,8 @@ export async function openEnvelope(
   input: { participantId: string; code: string },
   ip: string,
 ): Promise<EnvelopeView> {
-  const personLimit = { key: elfLimitKey(input.participantId), max: 6, windowSeconds: LOCK_WINDOW_SECONDS };
-  const networkLimit = { key: ipKey("elf-ip", ip), max: 40, windowSeconds: LOCK_WINDOW_SECONDS };
+  const personLimit = { key: elfLimitKey(input.participantId), max: 6, windowSeconds: PERSON_WINDOW_SECONDS };
+  const networkLimit = { key: ipKey("elf-ip", ip), max: 40, windowSeconds: NETWORK_WINDOW_SECONDS };
   await enforceLimits([personLimit, networkLimit], "Too many wrong codes.");
 
   const db = getDb();

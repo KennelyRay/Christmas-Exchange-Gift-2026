@@ -1,4 +1,4 @@
-/** 256 easy-to-read words: four of them make about 4.3 billion Elf Codes. */
+/** 256 easy-to-read words, used for exchange links and Organizer Codes. */
 export const WORDS = [
   "snow", "frost", "holly", "ivy", "pine", "cedar", "spruce", "fir",
   "ribbon", "bow", "tinsel", "garland", "wreath", "candle", "lantern", "star",

@@ -7,6 +7,7 @@ import * as schema from "@/db/schema";
 import type { Db } from "@/db/types";
 import { isSingleLoop, parseManifest, sha256HexInBrowser } from "@/lib/manifest";
 import type { ChainView, DashboardView, EnvelopeView, LobbyView } from "@/lib/types";
+import { hashCode } from "@/server/codes";
 
 const state = vi.hoisted(() => ({ db: undefined as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
@@ -575,16 +576,24 @@ describe("envelopes and Elf Codes", () => {
 
   it("accepts a code typed loosely", async () => {
     const { slug, people } = await drawn();
-    const loose = `  ${people[0].elfCode.replaceAll("-", " ").toUpperCase()} `;
+    const { elfCode } = people[0];
+    expect(elfCode).toMatch(/^\d{6}$/);
+    const loose = `  ${elfCode.slice(0, 3)} ${elfCode.slice(3)} `;
     const response = await call(envelopeRoute, { slug }, { body: { participantId: people[0].participantId, code: loose } });
     expect(response.status).toBe(200);
   });
 
-  it("accepts an Elf Code typed with no gaps between the words", async () => {
+  it("keeps older word codes working for people who already joined", async () => {
     const { slug, people } = await drawn();
-    const typed = people[0].elfCode.replaceAll("-", "");
-    const response = await call(envelopeRoute, { slug }, { body: { participantId: people[0].participantId, code: typed } });
-    expect(response.status).toBe(200);
+    const { participantId } = people[0];
+    await db
+      .update(schema.participants)
+      .set({ elfCodeHash: await hashCode("snow-frost-holly-ivy") })
+      .where(eq(schema.participants.id, participantId));
+
+    for (const code of ["snow-frost-holly-ivy", "Snow Frost Holly Ivy", "snowfrosthollyivy"]) {
+      expect((await call(envelopeRoute, { slug }, { body: { participantId, code } })).status).toBe(200);
+    }
   });
 
   it("accepts an Organizer Code typed with no gaps between the words", async () => {
@@ -613,7 +622,7 @@ describe("envelopes and Elf Codes", () => {
     }
     const blocked = await call(envelopeRoute, { slug }, { body: { participantId, code: elfCode } });
     expect(blocked.status).toBe(429);
-    expect(blocked.headers.get("retry-after")).toBeTruthy();
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(50 * 60);
   });
 
   it("counts simultaneous guesses against the limit", async () => {

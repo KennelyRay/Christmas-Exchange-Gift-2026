@@ -2,7 +2,8 @@ import bcrypt from "bcryptjs";
 import { randomInt } from "node:crypto";
 import { WORDS } from "@/lib/wordlist";
 
-const ELF_CODE_WORDS = 4;
+/** Elf Codes used to be four words, and people who joined then still hold those. */
+const LEGACY_ELF_CODE_WORDS = 4;
 const ORGANIZER_CODE_WORDS = 6;
 
 const rounds = () => Number(process.env.BCRYPT_ROUNDS ?? 11);
@@ -11,12 +12,15 @@ function randomWords(count: number) {
   return Array.from({ length: count }, () => WORDS[randomInt(WORDS.length)]);
 }
 
-export const generateElfCode = () => randomWords(ELF_CODE_WORDS).join("-");
+export const generateElfCode = () => String(randomInt(1_000_000)).padStart(6, "0");
 export const generateOrganizerCode = () => randomWords(ORGANIZER_CODE_WORDS).join("-");
 export const generateSlug = () => `${randomWords(2).join("-")}-${randomInt(10, 100)}`;
 
-/** Lets people type "Snow Frost holly IVY" or paste the code with stray spaces. */
+/** Lets people type "482 913" or "Snow Frost holly IVY", or paste with stray spaces. */
 export function normalizeCode(code: string) {
+  const digits = code.replace(/\D/g, "");
+  if (digits) return digits;
+
   return code
     .toLowerCase()
     .replace(/[^a-z]+/g, "-")
@@ -42,8 +46,10 @@ function readingsOf(letters: string, wordCount: number, words: string[] = []): s
 /** People often type a code with no gaps, so the words are recovered from the letters. */
 function candidateForms(code: string) {
   const normalized = normalizeCode(code);
+  if (/^\d+$/.test(normalized)) return [normalized];
+
   const letters = normalized.replaceAll("-", "");
-  const readings = [ELF_CODE_WORDS, ORGANIZER_CODE_WORDS].flatMap((count) => readingsOf(letters, count));
+  const readings = [LEGACY_ELF_CODE_WORDS, ORGANIZER_CODE_WORDS].flatMap((count) => readingsOf(letters, count));
   return [...new Set([normalized, ...readings])].slice(0, MAX_READINGS);
 }
 
