@@ -1,7 +1,8 @@
 import { count, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { exchanges, participants, wishlistItems } from "@/db/schema";
-import { MAX_PARTICIPANTS, nameKeyOf, type WishlistSubmission } from "@/lib/validation";
+import { fullNameOf, nameKeyOf, normalizeNamePart } from "@/lib/names";
+import { MAX_PARTICIPANTS, type WishlistSubmission } from "@/lib/validation";
 import { generateElfCode, hashCode } from "./codes";
 import { addAudit, type Exchange } from "./exchanges";
 import { ApiError, isUniqueViolation } from "./http";
@@ -20,6 +21,7 @@ export async function submitWishlist(exchange: Exchange, input: WishlistSubmissi
 
   const elfCode = generateElfCode();
   const elfCodeHash = await hashCode(elfCode);
+  const name = fullNameOf(input.firstName, input.lastName);
 
   try {
     const participantId = await getDb().transaction(async (tx) => {
@@ -46,8 +48,10 @@ export async function submitWishlist(exchange: Exchange, input: WishlistSubmissi
         .insert(participants)
         .values({
           exchangeId: exchange.id,
-          displayName: input.name,
-          nameKey: nameKeyOf(input.name),
+          firstName: input.firstName,
+          lastName: input.lastName,
+          lastNameKey: normalizeNamePart(input.lastName),
+          nameKey: nameKeyOf(input.firstName, input.lastName),
           elfCodeHash,
         })
         .returning({ id: participants.id });
@@ -63,18 +67,18 @@ export async function submitWishlist(exchange: Exchange, input: WishlistSubmissi
         })),
       );
 
-      await addAudit(tx, exchange.id, "participant_joined", `${input.name} joined the pool`);
+      await addAudit(tx, exchange.id, "participant_joined", `${name} joined the pool`);
       return person.id;
     });
 
-    return { participantId, name: input.name, elfCode };
+    return { participantId, name, elfCode };
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new ApiError(
         409,
         "name_taken",
-        "That name is already in the pool. If it's a different person, add a last name or nickname.",
-        { name: "That name is already in the pool" },
+        "That name is already in the pool. If it's a different person, add a middle name or nickname.",
+        { firstName: "That name is already in the pool" },
       );
     }
     throw error;

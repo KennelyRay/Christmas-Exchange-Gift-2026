@@ -7,6 +7,7 @@ import { burst } from "@/lib/celebrate";
 import { formatManila } from "@/lib/christmas";
 import { api, errorMessage } from "@/lib/client-api";
 import { formatPeso } from "@/lib/money";
+import { groupByFamily } from "@/lib/names";
 import type { EnvelopeView, PublicParticipant } from "@/lib/types";
 import { StoreChip } from "./store-chip";
 import { Button, ErrorNote, Field, inputClass, LinkButton, Paper } from "./ui";
@@ -234,6 +235,7 @@ export function EnvelopeClient({ slug, participants }: { slug: string; participa
   const [envelope, setEnvelope] = useState<EnvelopeView | null>(null);
   const [opened, setOpened] = useState(false);
   const [style, setStyle] = useState<"envelope" | "box">("envelope");
+  const families = groupByFamily(participants).sort((a, b) => a.label.localeCompare(b.label));
 
   async function unlock(event: FormEvent) {
     event.preventDefault();
@@ -323,10 +325,14 @@ export function EnvelopeClient({ slug, participants }: { slug: string; participa
               {(props) => (
                 <select {...props} value={participantId} onChange={(e) => setParticipantId(e.target.value)} className={inputClass}>
                   <option value="">Choose your name</option>
-                  {participants.map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name}
-                    </option>
+                  {families.map((family) => (
+                    <optgroup key={family.key} label={`${family.label} family`}>
+                      {[...family.members].sort((a, b) => a.name.localeCompare(b.name)).map((person) => (
+                        <option key={person.id} value={person.id}>
+                          {person.name}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               )}

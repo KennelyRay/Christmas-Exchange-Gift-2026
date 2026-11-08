@@ -26,7 +26,7 @@ export function CodeGate({ slug, onSuccess }: { slug: string; onSuccess: () => v
 
   return (
     <form onSubmit={submit} noValidate className="grid gap-4">
-      <Field label="Organizer Code" helper="The six words you saved when you created this exchange.">
+      <Field label="Organizer Code" helper="The six words you saved when you created this exchange. Capitals and spaces don't matter.">
         {(props) => (
           <input {...props} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} className={inputClass} />
         )}

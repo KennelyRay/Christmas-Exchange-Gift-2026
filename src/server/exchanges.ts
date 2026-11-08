@@ -1,12 +1,15 @@
 import { asc, count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { auditLog, exchanges, participants, wishlistItems } from "@/db/schema";
+import { auditLog, exchanges, exclusions, participants, wishlistItems } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { defaultRevealAt } from "@/lib/christmas";
+import type { ExclusionPair } from "@/lib/draw";
+import { fullNameOf } from "@/lib/names";
 import type { LobbyView, SealView } from "@/lib/types";
 import type { createExchangeSchema } from "@/lib/validation";
 import { generateOrganizerCode, generateSlug, hashCode } from "./codes";
+import { assessDraw } from "./draw-check";
 import { ApiError, isUniqueViolation } from "./http";
 
 export type Exchange = typeof exchanges.$inferSelect;
@@ -67,10 +70,12 @@ export async function createExchange(input: z.infer<typeof createExchangeSchema>
 }
 
 export async function participantsWithCounts(exchangeId: string) {
-  return getDb()
+  const rows = await getDb()
     .select({
       id: participants.id,
-      name: participants.displayName,
+      firstName: participants.firstName,
+      lastName: participants.lastName,
+      lastNameKey: participants.lastNameKey,
       itemCount: count(wishlistItems.id),
       firstOpenedAt: participants.firstOpenedAt,
       codeReissuedAt: participants.codeReissuedAt,
@@ -80,10 +85,17 @@ export async function participantsWithCounts(exchangeId: string) {
     .where(eq(participants.exchangeId, exchangeId))
     .groupBy(participants.id)
     .orderBy(asc(participants.joinedAt), asc(participants.id));
+
+  return rows.map((row) => ({ ...row, name: fullNameOf(row.firstName, row.lastName) }));
+}
+
+export async function exclusionPairs(exchangeId: string): Promise<Array<[string, string]>> {
+  const rules = await getDb().select().from(exclusions).where(eq(exclusions.exchangeId, exchangeId));
+  return rules.map((rule) => [rule.participantAId, rule.participantBId]);
 }
 
 export async function getLobby(exchange: Exchange): Promise<LobbyView> {
-  const [people, audit] = await Promise.all([
+  const [people, audit, pairs] = await Promise.all([
     participantsWithCounts(exchange.id),
     getDb()
       .select()
@@ -91,7 +103,10 @@ export async function getLobby(exchange: Exchange): Promise<LobbyView> {
       .where(eq(auditLog.exchangeId, exchange.id))
       .orderBy(desc(auditLog.id))
       .limit(100),
+    exclusionPairs(exchange.id),
   ]);
+
+  const drawWarning = exchange.status === "drawn" ? null : assessDraw(people, pairs as ExclusionPair[])?.publicMessage ?? null;
 
   return {
     slug: exchange.slug,
@@ -102,7 +117,14 @@ export async function getLobby(exchange: Exchange): Promise<LobbyView> {
     commitmentHash: exchange.commitmentHash,
     sealOpened: exchange.sealOpenedAt !== null,
     drawGeneration: exchange.drawGeneration,
-    participants: people.map(({ id, name, itemCount }) => ({ id, name, itemCount })),
+    participants: people.map(({ id, name, lastName, lastNameKey, itemCount }) => ({
+      id,
+      name,
+      lastName,
+      familyKey: lastNameKey,
+      itemCount,
+    })),
+    drawWarning,
     audit: audit.map(({ id, event, detail, createdAt }) => ({
       id,
       event,

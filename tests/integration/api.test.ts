@@ -79,13 +79,22 @@ async function createExchange(input: Record<string, unknown> = {}) {
   return { slug, organizerCode, cookie };
 }
 
+/** "Ana Dela Cruz" becomes first name "Ana", last name "Dela Cruz". */
+function nameFields(name: string) {
+  const [firstName, ...rest] = name.split(" ");
+  return { firstName, lastName: rest.join(" ") };
+}
+
 async function join(slug: string, name: string, items = [item()]) {
-  const response = await call(participantsRoutes.POST, { slug }, { body: { name, items } });
+  const response = await call(participantsRoutes.POST, { slug }, { body: { ...nameFields(name), items } });
   expect(response.status).toBe(201);
   return body<{ participantId: string; name: string; elfCode: string }>(response);
 }
 
-async function setUp(names = ["Ana", "Ben", "Carla", "Dino"]) {
+const FOUR = ["Ana Reyes", "Ben Santos", "Carla Lim", "Dino Tan"];
+const SIX = [...FOUR, "Ella Go", "Fred Uy"];
+
+async function setUp(names = FOUR) {
   const exchange = await createExchange();
   const people = [];
   for (const name of names) people.push(await join(exchange.slug, name, [item(`${name}'s wish`)]));
@@ -121,7 +130,7 @@ describe("wishlist submission and locking", () => {
   it("creates an exchange and shows joiners without their wishlists", async () => {
     const { slug, people } = await setUp();
     const view = await lobby(slug);
-    expect(view.participants.map((p) => p.name)).toEqual(["Ana", "Ben", "Carla", "Dino"]);
+    expect(view.participants.map((p) => p.name)).toEqual(FOUR);
     expect(view.participants[0].itemCount).toBe(1);
     expect(JSON.stringify(view)).not.toContain("wish");
     expect(JSON.stringify(view)).not.toContain(people[0].elfCode);
@@ -137,16 +146,45 @@ describe("wishlist submission and locking", () => {
     expect(row.elfCodeHash).not.toContain(people[0].elfCode);
   });
 
-  it("rejects duplicate names regardless of case and spacing", async () => {
+  it("stores first name, last name, and the family key separately", async () => {
+    const { slug } = await createExchange();
+    const person = await join(slug, "José Dela Cruz");
+    const [row] = await db.select().from(schema.participants).where(eq(schema.participants.id, person.participantId));
+    expect([row.firstName, row.lastName, row.lastNameKey]).toEqual(["José", "Dela Cruz", "dela cruz"]);
+    expect(person.name).toBe("José Dela Cruz");
+  });
+
+  it("requires both names on the server, and says which is missing", async () => {
+    const { slug } = await createExchange();
+    const submit = (names: object) => call(participantsRoutes.POST, { slug }, { body: { ...names, items: [item()] } });
+    const fieldsOf = async (response: Response) =>
+      Object.keys((await body<{ error: { fields: object } }>(response)).error.fields);
+
+    expect(await fieldsOf(await submit({ lastName: "Cruz" }))).toEqual(["firstName"]);
+    expect(await fieldsOf(await submit({ firstName: "Eli", lastName: "   " }))).toEqual(["lastName"]);
+    expect((await submit({ firstName: "E".repeat(41), lastName: "Cruz" })).status).toBe(422);
+  });
+
+  it.each([
+    ["  ana ", "REYES "],
+    ["Ána", "Reyés"],
+    ["ana", "reyes"],
+  ])("rejects %j %j as a duplicate of Ana Reyes", async (firstName, lastName) => {
     const { slug } = await setUp();
-    const response = await call(participantsRoutes.POST, { slug }, { body: { name: "  ana ", items: [item()] } });
+    const response = await call(participantsRoutes.POST, { slug }, { body: { firstName, lastName, items: [item()] } });
     expect(response.status).toBe(409);
     expect(await errorCode(response)).toBe("name_taken");
   });
 
+  it("allows the same first name in a different family", async () => {
+    const { slug } = await setUp();
+    expect((await join(slug, "Ana Villanueva")).name).toBe("Ana Villanueva");
+  });
+
   it("validates items, prices, and links", async () => {
     const { slug } = await createExchange();
-    const submit = (items: unknown[]) => call(participantsRoutes.POST, { slug }, { body: { name: "Eli", items } });
+    const submit = (items: unknown[]) =>
+      call(participantsRoutes.POST, { slug }, { body: { firstName: "Eli", lastName: "Cruz", items } });
 
     expect((await submit([])).status).toBe(422);
     expect((await submit([{ name: "Bag", priceCentavos: -5 }])).status).toBe(422);
@@ -171,15 +209,21 @@ describe("wishlist submission and locking", () => {
 
     const rename = db
       .update(schema.participants)
-      .set({ displayName: "Someone Else" })
+      .set({ firstName: "Someone Else" })
       .where(eq(schema.participants.id, people[0].participantId));
     await expect(rename).rejects.toThrow();
+
+    const changeFamily = db
+      .update(schema.participants)
+      .set({ lastNameKey: "someone else" })
+      .where(eq(schema.participants.id, people[0].participantId));
+    await expect(changeFamily).rejects.toThrow();
   });
 
   it("closes submissions when the pool locks", async () => {
     const { slug, cookie } = await setUp();
     await call(poolRoute, { slug }, { body: { action: "lock" }, cookie });
-    const response = await call(participantsRoutes.POST, { slug }, { body: { name: "Late", items: [item()] } });
+    const response = await call(participantsRoutes.POST, { slug }, { body: { firstName: "Late", lastName: "Comer", items: [item()] } });
     expect(response.status).toBe(409);
     expect(await errorCode(response)).toBe("pool_locked");
   });
@@ -220,7 +264,7 @@ describe("photo uploads", () => {
     const { url } = await body<{ url: string }>(response);
 
     const submit = await call(participantsRoutes.POST, { slug }, {
-      body: { name: "Mia", items: [{ name: "Bag", priceCentavos: 100, imageUrl: url }] },
+      body: { firstName: "Mia", lastName: "Cruz", items: [{ name: "Bag", priceCentavos: 100, imageUrl: url }] },
     });
     expect(submit.status).toBe(201);
     vi.unstubAllEnvs();
@@ -232,7 +276,7 @@ describe("photo uploads", () => {
     const second = await createExchange();
     const { url } = await body<{ url: string }>(await upload(first.slug, JPEG));
     const submit = await call(participantsRoutes.POST, { slug: second.slug }, {
-      body: { name: "Mia", items: [{ name: "Bag", priceCentavos: 100, imageUrl: url }] },
+      body: { firstName: "Mia", lastName: "Cruz", items: [{ name: "Bag", priceCentavos: 100, imageUrl: url }] },
     });
     expect(await errorCode(submit)).toBe("invalid_image");
     vi.unstubAllEnvs();
@@ -290,7 +334,7 @@ describe("organizer authority", () => {
     const response = await call(dashboardRoute, { slug }, { method: "GET", cookie });
     const view = await body<DashboardView>(response);
     expect(view.commitmentHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(Object.keys(view.participants[0]).sort()).toEqual(["codeReissuedAt", "hasOpened", "id", "itemCount", "name"]);
+    expect(Object.keys(view.participants[0]).sort()).toEqual(["codeReissuedAt", "familyKey", "hasOpened", "id", "itemCount", "lastName", "name"]);
     expect(view.participants).toHaveLength(people.length);
   });
 
@@ -303,7 +347,7 @@ describe("organizer authority", () => {
 
 describe("the draw", () => {
   it("gives everyone a valid recipient in one loop", async () => {
-    const { slug, people } = await drawn(["Ana", "Ben", "Carla", "Dino", "Ella", "Fred"]);
+    const { slug, people } = await drawn(SIX);
     const results = await openAll(slug, people);
     const links = [...results].map(([giver, recipient]) => ({ giver, recipient }));
     expect(isSingleLoop(links)).toBe(true);
@@ -366,7 +410,7 @@ describe("the draw", () => {
   });
 
   it("respects exclusion rules", async () => {
-    const { slug, cookie, people } = await setUp(["Ana", "Ben", "Carla", "Dino", "Ella", "Fred"]);
+    const { slug, cookie, people } = await setUp(SIX);
     const [ana, ben, carla, dino] = people;
     const rule = await call(exclusionsRoute, { slug }, {
       method: "PUT",
@@ -378,10 +422,89 @@ describe("the draw", () => {
     await call(poolRoute, { slug }, { body: { action: "lock" }, cookie });
     await call(drawRoute, { slug }, { cookie });
     const results = await openAll(slug, people);
-    expect(results.get("Ana")).not.toBe("Ben");
-    expect(results.get("Ben")).not.toBe("Ana");
-    expect(results.get("Carla")).not.toBe("Dino");
-    expect(results.get("Dino")).not.toBe("Carla");
+    expect(results.get("Ana Reyes")).not.toBe("Ben Santos");
+    expect(results.get("Ben Santos")).not.toBe("Ana Reyes");
+    expect(results.get("Carla Lim")).not.toBe("Dino Tan");
+    expect(results.get("Dino Tan")).not.toBe("Carla Lim");
+  });
+
+  it("never pairs people whose last names differ only by case, accent, or spacing", async () => {
+    const names = ["Ana Dela Cruz", "Ben dela  cruz", "Carla DÉLA CRUZ", "Dino Lim", "Ella Tan", "Fred Go"];
+    const family = new Set(["Ana Dela Cruz", "Ben dela cruz", "Carla DÉLA CRUZ"]);
+
+    for (let run = 0; run < 5; run++) {
+      const { slug, cookie, people } = await setUp(names);
+      await call(poolRoute, { slug }, { body: { action: "lock" }, cookie });
+      expect((await call(drawRoute, { slug }, { cookie })).status).toBe(201);
+      for (const [giver, recipient] of await openAll(slug, people)) {
+        expect(family.has(giver) && family.has(recipient)).toBe(false);
+      }
+    }
+  });
+
+  const SANTOS_MAJORITY = [
+    ...["Ana", "Ben", "Carla", "Dino", "Ella", "Fred"].map((first) => `${first} Santos`),
+    "Gia Lim",
+    "Hugo Tan",
+    "Ivy Go",
+    "Jun Uy",
+  ];
+  const SANTOS_MESSAGE = "The Santos family has 6 of 10 people, so they can't avoid drawing each other.";
+
+  it("warns on the public lobby as soon as one family is over half", async () => {
+    const { slug } = await setUp(SANTOS_MAJORITY);
+    expect((await lobby(slug)).drawWarning).toContain(SANTOS_MESSAGE);
+  });
+
+  it("clears the lobby warning once enough other families join", async () => {
+    const { slug } = await setUp(SANTOS_MAJORITY);
+    await join(slug, "Kim Yu");
+    await join(slug, "Lea Ong");
+    expect((await lobby(slug)).drawWarning).toBeNull();
+  });
+
+  it("stays quiet until there are enough people to judge", async () => {
+    const { slug } = await setUp(["Ana Santos", "Ben Santos"]);
+    expect((await lobby(slug)).drawWarning).toBeNull();
+  });
+
+  it("refuses to lock while one family is over half, since locking blocks the fix", async () => {
+    const { slug, cookie } = await setUp(SANTOS_MAJORITY);
+    const response = await call(poolRoute, { slug }, { body: { action: "lock" }, cookie });
+    expect(response.status).toBe(422);
+    expect(await errorCode(response)).toBe("family_majority");
+
+    const view = await body<DashboardView>(await call(dashboardRoute, { slug }, { method: "GET", cookie }));
+    expect(view.drawCheck).toEqual({ message: expect.stringContaining(SANTOS_MESSAGE), blocksLock: true });
+  });
+
+  it("blocks the draw itself with the same friendly message", async () => {
+    const { slug, cookie } = await setUp(SANTOS_MAJORITY);
+    await client.query(`UPDATE exchanges SET status = 'locked' WHERE slug = $1`, [slug]);
+
+    const response = await call(drawRoute, { slug }, { cookie });
+    expect(response.status).toBe(422);
+    const { error } = await body<{ error: { code: string; message: string } }>(response);
+    expect(error.code).toBe("draw_family_majority");
+    expect(error.message).toContain(SANTOS_MESSAGE);
+  });
+
+  it("keeps manual rules private on the lobby while telling the organizer who is stuck", async () => {
+    const { slug, cookie, people } = await setUp();
+    const [ana, ben, carla] = people;
+    await call(exclusionsRoute, { slug }, {
+      method: "PUT",
+      cookie,
+      body: { pairs: [[ana.participantId, ben.participantId], [ana.participantId, carla.participantId]] },
+    });
+
+    const warning = (await lobby(slug)).drawWarning!;
+    expect(warning).toBeTruthy();
+    expect(warning).not.toContain("Ana");
+
+    const view = await body<DashboardView>(await call(dashboardRoute, { slug }, { method: "GET", cookie }));
+    expect(view.drawCheck?.message).toContain("Ana Reyes");
+    expect(view.drawCheck?.blocksLock).toBe(false);
   });
 
   it("explains impossible rules in plain language", async () => {
@@ -403,7 +526,7 @@ describe("the draw", () => {
 
   it("rejects rules that mention outsiders", async () => {
     const { slug, cookie, people } = await setUp();
-    const other = await setUp(["Xia", "Yul", "Zed"]);
+    const other = await setUp(["Xia Wong", "Yul Cruz", "Zed Ramos"]);
     const response = await call(exclusionsRoute, { slug }, {
       method: "PUT",
       cookie,
@@ -454,6 +577,19 @@ describe("envelopes and Elf Codes", () => {
     const { slug, people } = await drawn();
     const loose = `  ${people[0].elfCode.replaceAll("-", " ").toUpperCase()} `;
     const response = await call(envelopeRoute, { slug }, { body: { participantId: people[0].participantId, code: loose } });
+    expect(response.status).toBe(200);
+  });
+
+  it("accepts an Elf Code typed with no gaps between the words", async () => {
+    const { slug, people } = await drawn();
+    const typed = people[0].elfCode.replaceAll("-", "");
+    const response = await call(envelopeRoute, { slug }, { body: { participantId: people[0].participantId, code: typed } });
+    expect(response.status).toBe(200);
+  });
+
+  it("accepts an Organizer Code typed with no gaps between the words", async () => {
+    const { slug, organizerCode } = await createExchange();
+    const response = await call(loginRoute, { slug }, { body: { code: organizerCode.replaceAll("-", "") } });
     expect(response.status).toBe(200);
   });
 

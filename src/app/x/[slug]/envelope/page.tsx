@@ -9,11 +9,10 @@ export default async function EnvelopePage({ params }: PageProps<"/x/[slug]/enve
   if (!exchange) notFound();
 
   const { participants } = await getLobby(exchange);
-  const sorted = [...participants].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <PageShell slug={slug} narrow>
-      <EnvelopeClient slug={slug} participants={sorted} />
+      <EnvelopeClient slug={slug} participants={participants} />
     </PageShell>
   );
 }

@@ -38,8 +38,14 @@ export const wishlistItemSchema = z.object({
   imageUrl: z.string().url().max(2048).nullable().optional(),
 });
 
+const personName = (label: string) =>
+  plainText(label, 40)
+    .regex(/\p{L}/u, `${label} needs at least one letter`)
+    .transform((value) => value.replace(/\s+/g, " "));
+
 export const wishlistSubmissionSchema = z.object({
-  name: plainText("Your name", 40),
+  firstName: personName("First name"),
+  lastName: personName("Last name"),
   items: z
     .array(wishlistItemSchema)
     .min(1, "Add at least one item")
@@ -75,8 +81,3 @@ export const resetDrawSchema = z.object({
 export const advanceChainSchema = z.object({ expectedStep: z.number().int().min(0) });
 
 export type WishlistSubmission = z.infer<typeof wishlistSubmissionSchema>;
-
-/** Treats "Tita  Baby" and "tita baby" as the same person. */
-export function nameKeyOf(name: string) {
-  return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
-}

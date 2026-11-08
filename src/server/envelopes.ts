@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { assignments, participants, wishlistItems } from "@/db/schema";
+import { fullNameOf } from "@/lib/names";
 import type { EnvelopeView } from "@/lib/types";
 import { burnVerification, verifyCode } from "./codes";
 import { unseal } from "./crypto";
@@ -37,8 +38,10 @@ export async function openEnvelope(
   await clearLimit(personLimit.key);
   await refundLimits([networkLimit]);
 
+  const giverName = fullNameOf(person.firstName, person.lastName);
+
   if (exchange.status !== "drawn") {
-    return { state: "waiting", giverName: person.displayName };
+    return { state: "waiting", giverName };
   }
 
   const [assignment] = await db
@@ -54,7 +57,7 @@ export async function openEnvelope(
 
   const [[recipient], items] = await Promise.all([
     db
-      .select({ name: participants.displayName })
+      .select({ firstName: participants.firstName, lastName: participants.lastName })
       .from(participants)
       .where(eq(participants.id, recipientId))
       .limit(1),
@@ -77,8 +80,8 @@ export async function openEnvelope(
 
   return {
     state: "ready",
-    giverName: person.displayName,
-    recipientName: recipient.name,
+    giverName,
+    recipientName: fullNameOf(recipient.firstName, recipient.lastName),
     items,
     codeReissuedAt: person.codeReissuedAt?.toISOString() ?? null,
   };

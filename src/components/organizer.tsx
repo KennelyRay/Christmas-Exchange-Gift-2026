@@ -77,9 +77,16 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
     setFeasible(await onSave(pairs));
   }
 
+  // Same-family pairs are already blocked by the automatic rule.
+  const familyOf = (id: string) => dashboard.participants.find((p) => p.id === id)?.familyKey;
+  const newPairs: Array<[string, string]> = selected.flatMap((a, i) =>
+    selected
+      .slice(i + 1)
+      .filter((b) => familyOf(a) !== familyOf(b))
+      .map((b): [string, string] => [a, b]),
+  );
+
   async function addGroup() {
-    const newPairs: Array<[string, string]> = [];
-    selected.forEach((a, i) => selected.slice(i + 1).forEach((b) => newPairs.push([a, b])));
     await save([...dashboard.exclusions, ...newPairs]);
     setSelected([]);
   }
@@ -101,16 +108,19 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
                     type="button"
                     aria-pressed={active}
                     onClick={() => toggle(person.id)}
-                    className={`min-h-11 max-w-full truncate rounded-full px-4 font-semibold ring-1 transition duration-200 ease-settle active:scale-[0.98] ${active ? "bg-pine-800 text-snow ring-pine-800" : "ring-ink/30 hover:bg-ink/5"}`}
+                    className={`min-h-11 max-w-full rounded-full px-4 py-1.5 font-semibold break-words ring-1 transition duration-200 ease-settle active:scale-[0.98] ${active ? "bg-pine-800 text-snow ring-pine-800" : "ring-ink/30 hover:bg-ink/5"}`}
                   >
                     {person.name}
                   </button>
                 );
               })}
             </div>
-            <Button variant="ghost" onClick={addGroup} disabled={selected.length < 2} className="mt-3">
+            <Button variant="ghost" onClick={addGroup} disabled={newPairs.length === 0} className="mt-3">
               They can&apos;t draw each other
             </Button>
+            {selected.length >= 2 && newPairs.length === 0 && (
+              <p className="mt-2 text-sm text-ink-soft">They share a last name, so this rule is already automatic.</p>
+            )}
           </div>
         )
       )}
@@ -138,7 +148,7 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-ink-soft">No rules yet, so anyone can draw anyone.</p>
+        <p className="text-sm text-ink-soft">No extra rules yet. Only the automatic family rule applies.</p>
       )}
     </div>
   );
@@ -199,7 +209,12 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
   const confirmations: Record<Confirmation, { title: string; body: ReactNode; action: string; run: () => Promise<unknown> }> = {
     lock: {
       title: "Lock the pool?",
-      body: <p>Nobody else can join after this. You can reopen it any time before the draw.</p>,
+      body: (
+        <>
+          <p>Nobody else can join after this. You can reopen it any time before the draw.</p>
+          {dashboard.drawCheck && <ErrorNote>{dashboard.drawCheck.message}</ErrorNote>}
+        </>
+      ),
       action: "Lock the pool",
       run: () => api(`${base}/pool`, { body: { action: "lock" } }),
     },
@@ -269,7 +284,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
                   ) : (
                     <EnvelopeSimpleIcon size={22} className="shrink-0 text-ink-soft" aria-label="Not opened yet" />
                   ))}
-                <span className="min-w-0 flex-1 truncate font-semibold">{person.name}</span>
+                <span className="min-w-0 flex-1 font-semibold break-words">{person.name}</span>
                 <button type="button" onClick={() => setReissueTarget(person)} className="min-h-11 shrink-0 px-2 text-sm font-semibold underline underline-offset-4">
                   New code
                 </button>
@@ -282,7 +297,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
           <div className="mt-5">
             {status === "open" ? (
               <>
-                <Button onClick={() => setConfirming("lock")} disabled={count < MIN_PEOPLE} icon={<LockKeyIcon aria-hidden size={18} />}>
+                <Button onClick={() => setConfirming("lock")} disabled={count < MIN_PEOPLE || dashboard.drawCheck?.blocksLock} icon={<LockKeyIcon aria-hidden size={18} />}>
                   Lock the pool
                 </Button>
                 {count < MIN_PEOPLE && <p className="mt-2 text-sm text-ink-soft">The draw needs at least {MIN_PEOPLE} people.</p>}
@@ -297,7 +312,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
         )}
       </Section>
 
-      <Section title="Who can't draw whom" note="Keep couples or households from drawing each other.">
+      <Section title="Who can't draw whom" note="People with the same last name never draw each other. Add extra rules here, like spouses with different last names.">
         <RulesEditor
           dashboard={dashboard}
           locked={isDrawn}
@@ -320,7 +335,8 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
       <Section title="The draw">
         {!isDrawn ? (
           <>
-            <Button onClick={() => setConfirming("draw")} disabled={status !== "locked" || busy}>
+            {dashboard.drawCheck && <ErrorNote className="mb-4">{dashboard.drawCheck.message}</ErrorNote>}
+            <Button onClick={() => setConfirming("draw")} disabled={status !== "locked" || busy || dashboard.drawCheck !== null}>
               Run the draw
             </Button>
             {status === "open" && <p className="mt-2 text-sm text-ink-soft">Lock the pool first.</p>}

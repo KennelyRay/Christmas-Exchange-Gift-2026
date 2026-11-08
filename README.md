@@ -9,7 +9,7 @@ Built with Next.js 16, TypeScript, Tailwind 4, Neon Postgres, Drizzle, and Verce
 | Who | What they do |
 | --- | --- |
 | **Organizer** | Creates the exchange, saves the Organizer Code, shares the link, locks the pool, sets rules, runs the draw. Never sees who got whom. |
-| **Family member** | Opens the link on a phone, adds wishes, confirms, saves their Elf Code. Later picks their name, enters the code, and breaks the seal. |
+| **Family member** | Opens the link on a phone, enters first and last name, adds wishes, confirms, saves their Elf Code. Later picks their name, enters the code, and breaks the seal. |
 | **Everyone, Christmas Night** | Watches the Gift Chain on a TV while the organizer presses Next. After it finishes, the seal can be opened so anyone can verify the draw. |
 
 An exchange moves through `open` (joining), `locked` (rules, then draw), and `drawn` (envelopes available). Gift Chain and the seal unlock at the Christmas Night time, which freezes at the draw.
@@ -19,7 +19,7 @@ An exchange moves through `open` (joining), `locked` (rules, then draw), and `dr
 | Route | Purpose |
 | --- | --- |
 | `/` | Create an exchange, or paste a link to an existing one |
-| `/x/[slug]` | The Pool: who has joined, countdown, seal fingerprint, public log |
+| `/x/[slug]` | The Pool: Family groups, live draw warning, countdown, seal fingerprint, public log |
 | `/x/[slug]/join` | Wishlist form, then the one-time Elf Code |
 | `/x/[slug]/envelope` | Private Envelope Mode: envelope or shakeable gift box |
 | `/x/[slug]/chain` | Christmas Night Gift Chain for the TV |
@@ -55,9 +55,9 @@ Migrations are in [drizzle/](drizzle/) and the schema is [src/db/schema.ts](src/
 | Table | Holds |
 | --- | --- |
 | `exchanges` | Status, organizer code hash, budget hint, Christmas Night, seal fingerprint and sealed manifest |
-| `participants` | Name, duplicate-check key, Elf Code hash |
+| `participants` | `first_name`, `last_name`, normalized `last_name_key` (the family), full-name duplicate key, Elf Code hash |
 | `wishlist_items` | Item name, price in centavos, link, photo URL |
-| `exclusions` | Pairs who can't draw each other |
+| `exclusions` | Extra pairs who can't draw each other, on top of the automatic family rule |
 | `assignments` | One row per giver, with recipient and position encrypted |
 | `audit_log` | The public history |
 | `rate_limits` | Attempt counters, because serverless memory doesn't persist |
@@ -66,7 +66,15 @@ Database triggers reject any update or delete on `wishlist_items` and `audit_log
 
 ## The draw
 
-[src/lib/draw.ts](src/lib/draw.ts) uses Sattolo's algorithm with `node:crypto` randomness, which makes one single loop with no self-picks and gives every possible loop the same chance. With exclusion rules it rejects whole loops until one fits, which keeps the result uniform among valid loops. A separate exact search tells impossible rules apart from unlucky ones, so the organizer gets a clear message.
+Three rules always apply: nobody draws themselves, people with the same normalized last name never draw each other, and any extra pairs the organizer adds are respected. Normalizing covers case, accents, and spacing, so "Dela Cruz", "dela  cruz", and "DÉLA CRUZ" are one family. Different spellings such as "De la Cruz" count as separate families, so use an extra rule for those.
+
+[src/lib/draw.ts](src/lib/draw.ts) works in stages, all using `node:crypto` randomness:
+
+1. **Feasibility.** If one family is more than half the pool, no loop can keep them apart, so the draw is blocked with a message naming the family. A family of exactly half works, by alternating around the loop. An exact search then catches impossible combinations of manual rules.
+2. **Random cycles.** Sattolo's algorithm makes one single loop with every possible loop equally likely. Whole loops that break a rule are thrown away and retried, up to 20,000 times, which keeps the result uniform among all valid loops.
+3. **Randomized backtracking.** If the rules are so tight that retries run out, a search over securely shuffled choices still finds a loop. This is random but not perfectly uniform, so it runs only when needed.
+
+The same check runs live on the lobby. The pool can't be locked while one family is over half, because locking would stop the only fix, which is more people joining.
 
 The draw runs in one Neon transaction holding a row lock on the exchange. It stores the encrypted assignments and publishes `SHA-256(manifest)`, where the manifest is the full list plus a random 256-bit salt.
 

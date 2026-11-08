@@ -8,9 +8,10 @@ import { burst } from "@/lib/celebrate";
 import { formatManila, nextChristmas } from "@/lib/christmas";
 import { usePoll, useNow } from "@/lib/hooks";
 import { formatPeso } from "@/lib/money";
+import { groupByFamily } from "@/lib/names";
 import type { LobbyView } from "@/lib/types";
 import { Countdown } from "./countdown";
-import { Button, LinkButton, Paper } from "./ui";
+import { Button, ErrorNote, LinkButton, Paper } from "./ui";
 import { WaxSeal } from "./wax-seal";
 
 const VISIBLE_LOG_ENTRIES = 6;
@@ -125,29 +126,41 @@ export function Lobby({ initial }: { initial: LobbyView }) {
                 <p className="mt-1 text-ink-soft">Send the link to the family, or be the first to add a wishlist.</p>
               </div>
             ) : (
-              <ul className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <AnimatePresence initial={false}>
-                  {lobby.participants.map((person) => (
-                    <motion.li
-                      key={person.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.8, y: 12 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      transition={{ type: "spring", stiffness: 260, damping: 18 }}
-                      className="flex min-w-0 items-center gap-3 rounded-2xl bg-paper-deep/70 p-2 pr-4"
-                    >
-                      <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-pine-800 font-display font-semibold text-gold">
-                        {person.name.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate font-semibold">{person.name}</span>
-                      <span className="shrink-0 text-sm text-ink-soft">
-                        {person.itemCount} {person.itemCount === 1 ? "wish" : "wishes"}
-                      </span>
-                    </motion.li>
-                  ))}
-                </AnimatePresence>
-              </ul>
+              <div className="mt-6 grid gap-6">
+                {groupByFamily(lobby.participants).map((family) => (
+                  <section key={family.key} aria-label={`The ${family.label} family`}>
+                    <h3 className="mb-2 flex items-baseline justify-between gap-3 font-display text-xl font-semibold">
+                      <span className="min-w-0 break-words">The {family.label} family</span>
+                      <span className="shrink-0 font-sans text-sm font-medium tabular-nums text-ink-soft">{family.members.length}</span>
+                    </h3>
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <AnimatePresence initial={false}>
+                        {family.members.map((person) => (
+                          <motion.li
+                            key={person.id}
+                            layout
+                            initial={{ opacity: 0, scale: 0.8, y: 12 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            transition={{ type: "spring", stiffness: 260, damping: 18 }}
+                            className="flex min-w-0 items-center gap-3 rounded-2xl bg-paper-deep/70 p-2 pr-4"
+                          >
+                            <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-pine-800 font-display font-semibold text-gold">
+                              {person.name.charAt(0).toUpperCase()}
+                            </span>
+                            <span className="min-w-0 flex-1 font-semibold break-words">{person.name}</span>
+                            <span className="shrink-0 text-sm text-ink-soft">
+                              {person.itemCount} {person.itemCount === 1 ? "wish" : "wishes"}
+                            </span>
+                          </motion.li>
+                        ))}
+                      </AnimatePresence>
+                    </ul>
+                  </section>
+                ))}
+              </div>
             )}
+
+            {lobby.drawWarning && <ErrorNote className="mt-6">{lobby.drawWarning}</ErrorNote>}
           </Paper>
         </section>
       </div>

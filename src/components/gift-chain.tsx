@@ -15,11 +15,19 @@ import { Button, LinkButton, Paper } from "./ui";
 
 const MIN_REEL_ROWS = 30;
 const SPIN_SECONDS = 2.8;
-const NAME_SIZE = "text-[clamp(3rem,11vw,9rem)]";
+const HEADLINE_SIZE = "text-[clamp(3rem,11vw,9rem)]";
+
+/** Full names vary a lot in length, and the reel has to fit the longest on one line. */
+function nameSize(names: readonly string[]) {
+  const longest = Math.max(...names.map((name) => name.length));
+  if (longest > 24) return "text-[clamp(1.5rem,5.5vw,5rem)]";
+  if (longest > 14) return "text-[clamp(2rem,7.5vw,7rem)]";
+  return HEADLINE_SIZE;
+}
 
 type Live = Extract<ChainView, { state: "live" }>;
 
-function Reel({ names, target, onDone }: { names: string[]; target: string; onDone: () => void }) {
+function Reel({ names, target, size, onDone }: { names: string[]; target: string; size: string; onDone: () => void }) {
   const rows: string[] = [];
   while (rows.length < MIN_REEL_ROWS) rows.push(...names);
   rows.push(target);
@@ -28,7 +36,7 @@ function Reel({ names, target, onDone }: { names: string[]; target: string; onDo
   const lastRow = useRef(0);
 
   return (
-    <div aria-hidden className={`h-[1.25em] overflow-hidden font-display leading-[1.25] font-semibold ${NAME_SIZE}`}>
+    <div aria-hidden className={`h-[1.25em] overflow-hidden font-display leading-[1.25] font-semibold ${size}`}>
       <motion.div
         initial={{ y: "0%" }}
         animate={{ y: `-${distance}%` }}
@@ -59,7 +67,7 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
     return (
       <div>
         <p className="text-[clamp(1.5rem,3vw,2.5rem)] text-snow/85">Everyone ready?</p>
-        <h1 className={`font-display leading-none font-semibold tracking-tight text-gold ${NAME_SIZE}`}>Who goes first?</h1>
+        <h1 className={`font-display leading-none font-semibold tracking-tight text-gold ${HEADLINE_SIZE}`}>Who goes first?</h1>
       </div>
     );
   }
@@ -67,6 +75,7 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
   const current = sequence[step - 1];
   const giver = step >= 2 ? sequence[step - 2] : null;
   const closesLoop = step === totalSteps;
+  const size = nameSize(names);
 
   return (
     <div>
@@ -79,14 +88,14 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
       )}
 
       {spinning ? (
-        <Reel names={names} target={current} onDone={onSpinDone} />
+        <Reel names={names} target={current} size={size} onDone={onSpinDone} />
       ) : (
         <motion.h1
           key={step}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 220, damping: 14 }}
-          className={`font-display leading-[1.25] font-semibold tracking-tight break-words text-gold ${NAME_SIZE}`}
+          className={`font-display leading-[1.25] font-semibold tracking-tight break-words text-gold ${size}`}
         >
           {current}
         </motion.h1>

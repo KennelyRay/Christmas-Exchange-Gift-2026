@@ -6,16 +6,24 @@
 /** Returns a uniform integer in [0, maxExclusive). */
 export type RandomInt = (maxExclusive: number) => number;
 
+/** `family` must already be normalized: everyone with the same value is one family. */
+export type DrawPerson = { id: string; family: string };
+
 export type ExclusionPair = readonly [string, string];
 
-export type DrawErrorCode = "too_few" | "duplicate_people" | "impossible" | "too_constrained";
+export type DrawProblem =
+  | { kind: "too_few" }
+  | { kind: "family_majority"; family: string; count: number; total: number }
+  | { kind: "stuck"; people: string[] }
+  | { kind: "impossible" };
+
+export type DrawErrorCode = "too_few" | "duplicate_people" | "family_majority" | "impossible" | "too_constrained";
 
 export class DrawError extends Error {
   constructor(
     readonly code: DrawErrorCode,
     message: string,
-    /** Participant ids that explain the failure, when there is a specific culprit. */
-    readonly people: string[] = [],
+    readonly problem?: DrawProblem,
   ) {
     super(message);
     this.name = "DrawError";
@@ -23,6 +31,9 @@ export class DrawError extends Error {
 }
 
 export const MIN_PARTICIPANTS = 3;
+
+const DEFAULT_STEP_BUDGET = 50_000;
+const FALLBACK_RESTARTS = 8;
 
 /**
  * Sattolo's algorithm. The result `next` is a single n-cycle: person i gives to
@@ -50,9 +61,31 @@ export function cycleToChain(next: readonly number[], start: number): number[] {
   return chain;
 }
 
-function buildBlockedMatrix(ids: readonly string[], exclusions: readonly ExclusionPair[]) {
-  const indexOf = new Map(ids.map((id, i) => [id, i]));
-  const blocked = ids.map(() => new Array<boolean>(ids.length).fill(false));
+function shuffled<T>(items: readonly T[], rng: RandomInt) {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = rng(i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+type Graph = {
+  blocked: boolean[][];
+  neighbors: number[][];
+  familyOf: number[];
+  familyCount: number;
+};
+
+function buildGraph(people: readonly DrawPerson[], exclusions: readonly ExclusionPair[]): Graph {
+  const indexOf = new Map(people.map((person, i) => [person.id, i]));
+  const families = new Map<string, number>();
+  const familyOf = people.map(({ family }) => {
+    if (!families.has(family)) families.set(family, families.size);
+    return families.get(family)!;
+  });
+
+  const blocked = people.map((_, i) => people.map((__, j) => familyOf[i] === familyOf[j]));
   for (const [a, b] of exclusions) {
     const ia = indexOf.get(a);
     const ib = indexOf.get(b);
@@ -60,143 +93,204 @@ function buildBlockedMatrix(ids: readonly string[], exclusions: readonly Exclusi
     blocked[ia][ib] = true;
     blocked[ib][ia] = true;
   }
-  return blocked;
+
+  const neighbors = people.map((_, i) => people.flatMap((__, j) => (blocked[i][j] ? [] : [j])));
+  return { blocked, neighbors, familyOf, familyCount: families.size };
 }
 
-function cycleRespectsRules(next: readonly number[], blocked: readonly boolean[][]) {
-  return next.every((to, from) => !blocked[from][to]);
-}
+type CandidateOrder = (candidates: number[], visited: readonly boolean[]) => number[];
 
-export type Feasibility = "possible" | "impossible" | "unknown";
-
-const FEASIBILITY_STEP_BUDGET = 2_000_000;
-
-/**
- * Can any single chain satisfy the rules? This is a Hamiltonian-cycle search
- * over the "allowed to draw" graph. It only decides possibility and never
- * picks the chain, so its deterministic order cannot bias the draw.
- */
-export function checkFeasibility(
-  ids: readonly string[],
-  exclusions: readonly ExclusionPair[],
-): { result: Feasibility; stuck: string[] } {
-  const n = ids.length;
-  const blocked = buildBlockedMatrix(ids, exclusions);
-  const neighbors = ids.map((_, i) =>
-    ids.flatMap((__, j) => (i !== j && !blocked[i][j] ? [j] : [])),
-  );
-
-  // In a chain each person needs two different partners: a giver and a recipient.
-  const stuck = ids.filter((_, i) => neighbors[i].length < 2);
-  if (stuck.length > 0) return { result: "impossible", stuck };
-
+/** Depth-first search for a loop through everyone, pruning branches that can't finish. */
+function searchCycle(graph: Graph, start: number, order: CandidateOrder, stepBudget: number) {
+  const { neighbors, familyOf, familyCount } = graph;
+  const n = neighbors.length;
   const visited = new Array<boolean>(n).fill(false);
+  const remaining = new Array<number>(familyCount).fill(0);
+  familyOf.forEach((family) => remaining[family]++);
+
+  const path = [start];
+  visited[start] = true;
+  remaining[familyOf[start]]--;
+
   let steps = 0;
   let exhausted = false;
+
+  // Family members can't be neighbours, so they fit in at most every other open
+  // slot. The slots right after `current` and right before `start` may be unusable.
+  const familiesFit = (current: number) => {
+    const open = n - path.length;
+    for (let family = 0; family < familyCount; family++) {
+      if (remaining[family] === 0) continue;
+      let slots = open;
+      if (familyOf[current] === family) slots--;
+      if (familyOf[start] === family) slots--;
+      if (remaining[family] > Math.max(0, Math.ceil(slots / 2))) return false;
+    }
+    return true;
+  };
 
   const hasDeadEnd = (current: number) => {
     for (let v = 0; v < n; v++) {
       if (visited[v]) continue;
-      const exits = neighbors[v].filter((w) => !visited[w] || w === current || w === 0);
-      if (exits.length < 2) return true;
+      let exits = 0;
+      for (const w of neighbors[v]) {
+        if (!visited[w] || w === current || w === start) exits++;
+      }
+      if (exits < 2) return true;
     }
     return false;
   };
 
-  const search = (current: number, depth: number): boolean => {
-    if (depth === n) return neighbors[current].includes(0);
-    if (++steps > FEASIBILITY_STEP_BUDGET) {
+  const search = (current: number): boolean => {
+    if (path.length === n) return neighbors[current].includes(start);
+    if (++steps > stepBudget) {
       exhausted = true;
       return false;
     }
-    const candidates = neighbors[current]
-      .filter((v) => !visited[v])
-      .map((v) => ({ v, free: neighbors[v].filter((w) => !visited[w]).length }))
-      .sort((a, b) => a.free - b.free);
 
-    for (const { v } of candidates) {
+    for (const v of order(neighbors[current].filter((w) => !visited[w]), visited)) {
       visited[v] = true;
-      const found = !hasDeadEnd(v) && search(v, depth + 1);
-      if (found) return true;
+      remaining[familyOf[v]]--;
+      path.push(v);
+
+      if (familiesFit(v) && !hasDeadEnd(v) && search(v)) return true;
+
+      path.pop();
+      remaining[familyOf[v]]++;
       visited[v] = false;
       if (exhausted) return false;
     }
     return false;
   };
 
-  visited[0] = true;
-  if (search(0, 1)) return { result: "possible", stuck: [] };
-  return { result: exhausted ? "unknown" : "impossible", stuck: [] };
+  return { cycle: search(start) ? path : null, exhausted };
+}
+
+export type Feasibility = { result: "possible" | "unknown" } | { result: "impossible"; problem: DrawProblem };
+
+function largestFamily(people: readonly DrawPerson[]) {
+  const counts = new Map<string, number>();
+  for (const { family } of people) counts.set(family, (counts.get(family) ?? 0) + 1);
+  let largest = { family: "", count: 0 };
+  for (const [family, count] of counts) {
+    if (count > largest.count) largest = { family, count };
+  }
+  return largest;
+}
+
+/**
+ * Can any single chain satisfy every rule? This only decides possibility and
+ * never picks the chain, so its deterministic search order can't bias the draw.
+ */
+export function checkFeasibility(
+  people: readonly DrawPerson[],
+  exclusions: readonly ExclusionPair[] = [],
+  { stepBudget = DEFAULT_STEP_BUDGET }: { stepBudget?: number } = {},
+): Feasibility {
+  if (people.length < MIN_PARTICIPANTS) return { result: "impossible", problem: { kind: "too_few" } };
+
+  // In a loop, no two members of a family can sit side by side, so one family
+  // can fill at most half the seats.
+  const { family, count } = largestFamily(people);
+  if (count * 2 > people.length) {
+    return { result: "impossible", problem: { kind: "family_majority", family, count, total: people.length } };
+  }
+
+  const graph = buildGraph(people, exclusions);
+
+  // Each person needs two different partners: one to give to, one to receive from.
+  const stuck = people.filter((_, i) => graph.neighbors[i].length < 2).map((person) => person.id);
+  if (stuck.length > 0) return { result: "impossible", problem: { kind: "stuck", people: stuck } };
+
+  const fewestOptionsFirst: CandidateOrder = (candidates, visited) =>
+    candidates
+      .map((v) => ({ v, free: graph.neighbors[v].filter((w) => !visited[w]).length }))
+      .sort((a, b) => a.free - b.free)
+      .map(({ v }) => v);
+
+  const { cycle, exhausted } = searchCycle(graph, 0, fewestOptionsFirst, stepBudget);
+  if (cycle) return { result: "possible" };
+  return exhausted ? { result: "unknown" } : { result: "impossible", problem: { kind: "impossible" } };
+}
+
+function errorFor(problem: DrawProblem) {
+  switch (problem.kind) {
+    case "too_few":
+      return new DrawError("too_few", `The draw needs at least ${MIN_PARTICIPANTS} people.`, problem);
+    case "family_majority":
+      return new DrawError("family_majority", `One family has ${problem.count} of ${problem.total} people.`, problem);
+    case "stuck":
+    case "impossible":
+      return new DrawError("impossible", "No single gift chain can satisfy these rules.", problem);
+  }
 }
 
 export type DrawResult = {
   /** Ids in giving order: chain[i] gives to chain[i + 1], and the last gives to chain[0]. */
   chain: string[];
   attempts: number;
+  method: "random_cycle" | "backtracking";
 };
 
-export type DrawOptions = { maxAttempts?: number };
+export type DrawOptions = { maxAttempts?: number; stepBudget?: number };
 
 /**
- * Picks one uniformly random single chain among all chains that obey the rules.
- * Rejecting whole cycles keeps the distribution uniform; repairing a bad cycle
- * would favour some outcomes.
+ * Prefers a whole random cycle, retried until it obeys every rule: rejecting
+ * whole cycles keeps the choice uniform among all valid chains. When the rules
+ * are so tight that retries run out, a randomized search still finds a chain.
  */
 export function drawGiftChain(
-  ids: readonly string[],
+  people: readonly DrawPerson[],
   exclusions: readonly ExclusionPair[],
   rng: RandomInt,
-  { maxAttempts = 200_000 }: DrawOptions = {},
+  { maxAttempts = 20_000, stepBudget = DEFAULT_STEP_BUDGET }: DrawOptions = {},
 ): DrawResult {
-  if (ids.length < MIN_PARTICIPANTS) {
-    throw new DrawError("too_few", `The draw needs at least ${MIN_PARTICIPANTS} people.`);
-  }
-  if (new Set(ids).size !== ids.length) {
+  if (new Set(people.map((person) => person.id)).size !== people.length) {
     throw new DrawError("duplicate_people", "The same person appears twice in the pool.");
   }
 
-  if (exclusions.length > 0) {
-    const { result, stuck } = checkFeasibility(ids, exclusions);
-    if (result === "impossible") {
-      throw new DrawError(
-        "impossible",
-        "No single gift chain can satisfy these rules. Remove a rule or two and try again.",
-        stuck,
-      );
-    }
-  }
+  const feasibility = checkFeasibility(people, exclusions, { stepBudget });
+  if (feasibility.result === "impossible") throw errorFor(feasibility.problem);
 
-  const blocked = buildBlockedMatrix(ids, exclusions);
+  const graph = buildGraph(people, exclusions);
+  const n = people.length;
+  const toIds = (order: readonly number[]) => order.map((i) => people[i].id);
+
   for (let attempts = 1; attempts <= maxAttempts; attempts++) {
-    const next = sattoloCycle(ids.length, rng);
-    if (cycleRespectsRules(next, blocked)) {
+    const next = sattoloCycle(n, rng);
+    if (next.every((to, from) => !graph.blocked[from][to])) {
       // A random starting point stops the first joiner from always opening the chain.
-      const chain = cycleToChain(next, rng(ids.length)).map((i) => ids[i]);
-      return { chain, attempts };
+      return { chain: toIds(cycleToChain(next, rng(n))), attempts, method: "random_cycle" };
     }
   }
 
-  throw new DrawError(
-    "too_constrained",
-    "These rules leave almost no valid chains, so the draw gave up. Remove a rule and try again.",
-  );
+  const randomOrder: CandidateOrder = (candidates) => shuffled(candidates, rng);
+  for (let restart = 0; restart < FALLBACK_RESTARTS; restart++) {
+    const { cycle } = searchCycle(graph, rng(n), randomOrder, stepBudget);
+    if (cycle) return { chain: toIds(cycle), attempts: maxAttempts, method: "backtracking" };
+  }
+
+  throw new DrawError("too_constrained", "These rules leave almost no valid chains, so the draw gave up. Remove a rule and try again.");
 }
 
 /** Independent re-check of a chain, run again just before it is stored. */
 export function isValidChain(
   chain: readonly string[],
-  ids: readonly string[],
+  people: readonly DrawPerson[],
   exclusions: readonly ExclusionPair[] = [],
 ): boolean {
-  if (chain.length !== ids.length || ids.length < MIN_PARTICIPANTS) return false;
+  if (chain.length !== people.length || people.length < MIN_PARTICIPANTS) return false;
   if (new Set(chain).size !== chain.length) return false;
-  const known = new Set(ids);
-  if (!chain.every((id) => known.has(id))) return false;
+
+  const familyOf = new Map(people.map((person) => [person.id, person.family]));
+  if (!chain.every((id) => familyOf.has(id))) return false;
 
   const pairKey = (a: string, b: string) => JSON.stringify(a < b ? [a, b] : [b, a]);
   const forbidden = new Set(exclusions.map(([a, b]) => pairKey(a, b)));
   return chain.every((giver, i) => {
     const recipient = chain[(i + 1) % chain.length];
-    return giver !== recipient && !forbidden.has(pairKey(giver, recipient));
+    return (
+      giver !== recipient && familyOf.get(giver) !== familyOf.get(recipient) && !forbidden.has(pairKey(giver, recipient))
+    );
   });
 }

@@ -15,6 +15,27 @@
       "when": 1794127156540,
       "tag": "0001_immutable-records",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794129941668,
+      "tag": "0002_participant-names",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794129948259,
+      "tag": "0003_participant-identity-lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794130082382,
+      "tag": "0004_drop-display-name",
+      "breakpoints": true
     }
   ]
 }

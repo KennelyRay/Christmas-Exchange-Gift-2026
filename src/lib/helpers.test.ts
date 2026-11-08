@@ -3,7 +3,8 @@ import { defaultRevealAt, fromManilaInputValue, nextChristmas, timeParts, toMani
 import { buildManifest, isSingleLoop, parseManifest } from "./manifest";
 import { formatPeso, parsePesoToCentavos } from "./money";
 import { isWebUrl, normalizeWebUrl, storeNameFor } from "./stores";
-import { nameKeyOf, wishlistItemSchema } from "./validation";
+import { fullNameOf, groupByFamily, nameKeyOf, normalizeNamePart } from "./names";
+import { wishlistItemSchema, wishlistSubmissionSchema } from "./validation";
 import { WORDS } from "./wordlist";
 import { generateElfCode, generateOrganizerCode, generateSlug, hashCode, normalizeCode, verifyCode } from "@/server/codes";
 import { createOrganizerToken, isValidOrganizerToken, seal, unseal } from "@/server/crypto";
@@ -93,8 +94,63 @@ describe("dates", () => {
 });
 
 describe("names", () => {
-  it("treats case and spacing as the same name", () => {
-    expect(nameKeyOf("  Tita   BABY ")).toBe(nameKeyOf("tita baby"));
+  it.each([
+    ["Dela Cruz", "dela  cruz"],
+    [" DELA CRUZ ", "dela cruz"],
+    ["Peña", "pena"],
+    ["José", "JOSE"],
+    ["Nguyễn", "nguyen"],
+    ["Dela Cruz", "dela cruz"],
+  ])("treats %j and %j as the same", (a, b) => {
+    expect(normalizeNamePart(a)).toBe(normalizeNamePart(b));
+  });
+
+  it("keeps genuinely different spellings apart", () => {
+    expect(normalizeNamePart("De la Cruz")).not.toBe(normalizeNamePart("Dela Cruz"));
+  });
+
+  it("compares the whole name, however it was split", () => {
+    expect(nameKeyOf("Mary Ann", "Cruz")).toBe(nameKeyOf("Mary", "Ann Cruz"));
+    expect(nameKeyOf("José", "dela  Cruz")).toBe(nameKeyOf("JOSE", "Dela Cruz"));
+  });
+
+  it("shows the full name", () => {
+    expect(fullNameOf("Ana", "Dela Cruz")).toBe("Ana Dela Cruz");
+  });
+
+  it("groups people by family, in join order, labelled by the first spelling", () => {
+    const person = (id: string, lastName: string) => ({ id, lastName, familyKey: normalizeNamePart(lastName) });
+    const families = groupByFamily([person("a", "Dela Cruz"), person("b", "Lim"), person("c", "dela  cruz")]);
+    expect(families.map((f) => [f.label, f.members.map((m) => m.id)])).toEqual([
+      ["Dela Cruz", ["a", "c"]],
+      ["Lim", ["b"]],
+    ]);
+  });
+});
+
+describe("wishlist submission names", () => {
+  const items = [{ name: "A", priceCentavos: 100 }];
+  const parse = (firstName: unknown, lastName: unknown) => wishlistSubmissionSchema.safeParse({ firstName, lastName, items });
+
+  it("requires both names", () => {
+    expect(parse("", "Cruz").success).toBe(false);
+    expect(parse("Ana", "").success).toBe(false);
+    expect(parse("   ", "Cruz").success).toBe(false);
+    expect(parse("Ana", "   ").success).toBe(false);
+    expect(parse(undefined, "Cruz").success).toBe(false);
+    expect(parse("Ana", undefined).success).toBe(false);
+  });
+
+  it("cleans up spacing but keeps the person's own spelling", () => {
+    const result = wishlistSubmissionSchema.parse({ firstName: "  José ", lastName: " Dela   Cruz", items });
+    expect([result.firstName, result.lastName]).toEqual(["José", "Dela Cruz"]);
+  });
+
+  it("limits length and rejects names with no letters", () => {
+    expect(parse("A".repeat(41), "Cruz").success).toBe(false);
+    expect(parse("Ana", "L".repeat(41)).success).toBe(false);
+    expect(parse("123", "Cruz").success).toBe(false);
+    expect(parse("Ana", "---").success).toBe(false);
   });
 });
 
@@ -117,6 +173,45 @@ describe("codes", () => {
     expect(await verifyCode(" Snow FROST  holly\nivy ", hash)).toBe(true);
     expect(await verifyCode("snow-frost-holly-pine", hash)).toBe(false);
     expect(normalizeCode("a b")).toBe("a-b");
+  });
+});
+
+describe("typing a code however feels natural", () => {
+  const code = "snow-frost-holly-ivy";
+  const organizerCode = "santa-pear-noche-honey-cocoa-ivy";
+
+  it.each([
+    "snowfrosthollyivy",
+    "SNOWFROSTHOLLYIVY",
+    "snow frost holly ivy",
+    "snow,frost.holly/ivy",
+    "snowfrost hollyivy",
+    "snow · frost · holly · ivy",
+    " snow-frost-holly-ivy ",
+  ])("accepts %j", async (typed) => {
+    expect(await verifyCode(typed, await hashCode(code))).toBe(true);
+  });
+
+  it("accepts a six-word Organizer Code typed with no separators", async () => {
+    expect(await verifyCode("santapearnochehoneycocoaivy", await hashCode(organizerCode))).toBe(true);
+  });
+
+  it("still accepts hashes made from the dashed form", async () => {
+    const hash = await hashCode("snow frost holly ivy");
+    expect(await verifyCode("snowfrosthollyivy", hash)).toBe(true);
+  });
+
+  it.each(["snowfrosthollypine", "snowfrostholly", "snowfrosthollyivyivy", "xxsnowfrosthollyivy", "ivyhollyfrostsnow", ""])(
+    "still rejects %j",
+    async (typed) => {
+      expect(await verifyCode(typed, await hashCode(code))).toBe(false);
+    },
+  );
+
+  it("backs up when a longer word is a false start", async () => {
+    // "pearl" is also a code word, but only "pear" + "lace" leaves valid letters.
+    const hash = await hashCode("pear-lace-fig-ivy");
+    expect(await verifyCode("pearlacefigivy", hash)).toBe(true);
   });
 });
 

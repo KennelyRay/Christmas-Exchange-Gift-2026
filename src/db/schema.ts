@@ -61,8 +61,11 @@ export const participants = pgTable(
     exchangeId: uuid("exchange_id")
       .notNull()
       .references(() => exchanges.id),
-    displayName: text("display_name").notNull(),
-    /** Case- and space-insensitive form of the name, for duplicate checks. */
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    /** Normalized last name. Everyone sharing it is one family and can't draw each other. */
+    lastNameKey: text("last_name_key").notNull(),
+    /** Normalized full name, for duplicate checks. */
     nameKey: text("name_key").notNull(),
     elfCodeHash: text("elf_code_hash").notNull(),
     codeReissuedAt: timestamp("code_reissued_at", { withTimezone: true }),

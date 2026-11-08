@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, ClientApiError, errorMessage } from "@/lib/client-api";
 import { compressImage, MAX_SOURCE_BYTES } from "@/lib/images";
 import { formatPeso, parsePesoToCentavos } from "@/lib/money";
+import { fullNameOf } from "@/lib/names";
 import { normalizeWebUrl } from "@/lib/stores";
 import { MAX_ITEMS, wishlistSubmissionSchema } from "@/lib/validation";
 import { SecretCode } from "./secret-code";
@@ -19,16 +20,18 @@ type Props = { slug: string; budgetCentavos: number | null };
 
 const newItem = (): Draft => ({ key: crypto.randomUUID(), name: "", price: "", url: "", imageUrl: null });
 
-type SavedDraft = { name: string; items: Draft[] };
+type SavedDraft = { firstName: string; lastName: string; items: Draft[] };
 
 function loadDraft(storageKey: string): SavedDraft {
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") as SavedDraft | null;
-    if (saved && Array.isArray(saved.items) && saved.items.length > 0) return saved;
+    const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") as Partial<SavedDraft> | null;
+    if (saved && Array.isArray(saved.items) && saved.items.length > 0) {
+      return { firstName: saved.firstName ?? "", lastName: saved.lastName ?? "", items: saved.items };
+    }
   } catch {
     // A missing or unreadable draft just means starting fresh.
   }
-  return { name: "", items: [newItem()] };
+  return { firstName: "", lastName: "", items: [newItem()] };
 }
 
 function PhotoPicker({
@@ -119,7 +122,8 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
   const storageKey = `wishlist-draft:${slug}`;
 
   const [draft] = useState(() => loadDraft(storageKey));
-  const [name, setNameValue] = useState(draft.name);
+  const [firstName, setFirstNameValue] = useState(draft.firstName);
+  const [lastName, setLastNameValue] = useState(draft.lastName);
   const [items, setItemsValue] = useState(draft.items);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState("");
@@ -129,10 +133,15 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
     setErrors({});
     setFormError("");
   }
-  const setName = (value: string) => {
+  const setFirstName = (value: string) => {
     clearErrors();
-    setNameValue(value);
+    setFirstNameValue(value);
   };
+  const setLastName = (value: string) => {
+    clearErrors();
+    setLastNameValue(value);
+  };
+  const fullName = fullNameOf(firstName.trim(), lastName.trim());
   const setItems: typeof setItemsValue = (change) => {
     clearErrors();
     setItemsValue(change);
@@ -143,11 +152,11 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ name, items }));
+      localStorage.setItem(storageKey, JSON.stringify({ firstName, lastName, items }));
     } catch {
       // Without storage the form still works; it just won't survive a refresh.
     }
-  }, [storageKey, name, items]);
+  }, [storageKey, firstName, lastName, items]);
 
   const total = items.reduce((sum, item) => sum + (parsePesoToCentavos(item.price) ?? 0), 0);
 
@@ -175,7 +184,7 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
       };
     });
 
-    const payload = { name, items: payloadItems };
+    const payload = { firstName, lastName, items: payloadItems };
     const parsed = wishlistSubmissionSchema.safeParse(payload);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) found[issue.path.join(".")] ??= issue.message;
@@ -224,7 +233,7 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
   if (elfCode) {
     return (
       <Paper className="rise">
-        <h1 className="mb-1 font-display text-3xl font-semibold">You&apos;re in the pool, {name.trim()}</h1>
+        <h1 className="mb-1 font-display text-3xl font-semibold break-words">You&apos;re in the pool, {firstName.trim()}</h1>
         <p className="mb-5 text-ink-soft">This Elf Code is how you&apos;ll open your envelope after the draw.</p>
         <SecretCode
           label="Your Elf Code"
@@ -253,9 +262,15 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
       </header>
 
       <Paper>
-        <Field label="Your name" helper="The name your family knows you by. It has to be unique in this exchange." error={errors.name}>
-          {(props) => <input {...props} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="name" className={inputClass} />}
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="First name" error={errors.firstName}>
+            {(props) => <input {...props} value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={40} autoComplete="given-name" className={inputClass} />}
+          </Field>
+          <Field label="Last name" error={errors.lastName}>
+            {(props) => <input {...props} value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={40} autoComplete="family-name" className={inputClass} />}
+          </Field>
+        </div>
+        <p className="mt-3 text-sm text-ink-soft">People with the same last name are one family and won&apos;t draw each other, so spell yours the way your family does.</p>
       </Paper>
 
       <ol className="grid gap-4">
@@ -360,7 +375,7 @@ export function WishlistForm({ slug, budgetCentavos }: Props) {
         <p>
           <strong className="text-ink">You can&apos;t edit this after submitting.</strong> Once sealed, your {items.length}{" "}
           {items.length === 1 ? "wish is" : "wishes are"} permanently locked, and you&apos;ll join the pool as{" "}
-          <strong className="text-ink">{name.trim()}</strong>.
+          <strong className="text-ink">{fullName}</strong>. Your name can&apos;t be changed either.
         </p>
       </Dialog>
     </form>

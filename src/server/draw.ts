@@ -3,8 +3,10 @@ import { getDb } from "@/db/client";
 import { assignments, exchanges, exclusions, participants } from "@/db/schema";
 import { DrawError, drawGiftChain, isValidChain, MIN_PARTICIPANTS, type ExclusionPair } from "@/lib/draw";
 import { buildManifest } from "@/lib/manifest";
+import { fullNameOf } from "@/lib/names";
 import { secureRandomInt } from "@/lib/rng";
 import { randomSalt, seal, sha256Hex } from "./crypto";
+import { describeProblem } from "./draw-check";
 import { addAudit, shortHash, type Exchange } from "./exchanges";
 import { ApiError } from "./http";
 
@@ -13,18 +15,6 @@ export const assignmentContext = (exchangeId: string, giverId: string, generatio
 
 export const manifestContext = (exchangeId: string, generation: number) =>
   `manifest:${exchangeId}:${generation}`;
-
-function friendlyDrawError(error: DrawError, nameOf: (id: string) => string) {
-  if (error.code === "impossible" && error.people.length > 0) {
-    const names = error.people.map(nameOf).join(", ");
-    return new ApiError(
-      422,
-      "draw_impossible",
-      `${names} ${error.people.length === 1 ? "has" : "have"} too few people left to draw with. Everyone needs at least two people the rules allow. Remove a rule and try again.`,
-    );
-  }
-  return new ApiError(422, `draw_${error.code}`, error.message);
-}
 
 /** Generates, seals, and stores the draw in one transaction: all of it lands or none. */
 export async function runDraw(exchangeId: string) {
@@ -42,7 +32,12 @@ export async function runDraw(exchangeId: string) {
     }
 
     const people = await tx
-      .select({ id: participants.id, name: participants.displayName })
+      .select({
+        id: participants.id,
+        firstName: participants.firstName,
+        lastName: participants.lastName,
+        lastNameKey: participants.lastNameKey,
+      })
       .from(participants)
       .where(eq(participants.exchangeId, exchangeId))
       .orderBy(asc(participants.joinedAt), asc(participants.id));
@@ -53,17 +48,22 @@ export async function runDraw(exchangeId: string) {
 
     const rules = await tx.select().from(exclusions).where(eq(exclusions.exchangeId, exchangeId));
     const pairs: ExclusionPair[] = rules.map((r) => [r.participantAId, r.participantBId]);
-    const ids = people.map((p) => p.id);
-    const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? "Someone";
+    const pool = people.map((p) => ({ id: p.id, family: p.lastNameKey }));
+    const nameOf = (id: string) => {
+      const person = people.find((p) => p.id === id);
+      return person ? fullNameOf(person.firstName, person.lastName) : "Someone";
+    };
 
     let chain: string[];
     try {
-      chain = drawGiftChain(ids, pairs, secureRandomInt).chain;
+      chain = drawGiftChain(pool, pairs, secureRandomInt).chain;
     } catch (error) {
-      if (error instanceof DrawError) throw friendlyDrawError(error, nameOf);
+      if (error instanceof DrawError) {
+        throw new ApiError(422, `draw_${error.code}`, error.problem ? describeProblem(error.problem, people) : error.message);
+      }
       throw error;
     }
-    if (!isValidChain(chain, ids, pairs)) throw new Error("Draw produced an invalid chain");
+    if (!isValidChain(chain, pool, pairs)) throw new Error("Draw produced an invalid chain");
 
     const generation = current.drawGeneration + 1;
     const manifest = buildManifest(current.slug, randomSalt(), chain.map(nameOf));

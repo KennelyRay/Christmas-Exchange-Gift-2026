@@ -2,18 +2,21 @@ import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { exchanges, exclusions, participants } from "@/db/schema";
-import { checkFeasibility, MIN_PARTICIPANTS, type ExclusionPair } from "@/lib/draw";
+import { MIN_PARTICIPANTS, type ExclusionPair } from "@/lib/draw";
 import { formatManila } from "@/lib/christmas";
+import { fullNameOf } from "@/lib/names";
 import { formatPeso } from "@/lib/money";
 import type { DashboardView } from "@/lib/types";
 import type { organizerSettingsSchema } from "@/lib/validation";
 import { generateElfCode, hashCode, verifyCode } from "./codes";
 import { createOrganizerToken, isValidOrganizerToken, unseal } from "./crypto";
 import { canResetDraw, manifestContext } from "./draw";
+import { assessDraw } from "./draw-check";
 import { elfLimitKey } from "./envelopes";
 import {
   addAudit,
   assertFutureReveal,
+  exclusionPairs,
   participantsWithCounts,
   requireExchange,
   type Exchange,
@@ -72,10 +75,8 @@ function canOpenSeal(exchange: Exchange, participantCount: number) {
 
 /** Contains no assignment data of any kind: the organizer stays as blind as everyone else. */
 export async function getDashboard(exchange: Exchange): Promise<DashboardView> {
-  const [people, rules] = await Promise.all([
-    participantsWithCounts(exchange.id),
-    getDb().select().from(exclusions).where(eq(exclusions.exchangeId, exchange.id)),
-  ]);
+  const [people, pairs] = await Promise.all([participantsWithCounts(exchange.id), exclusionPairs(exchange.id)]);
+  const check = exchange.status === "drawn" ? null : assessDraw(people, pairs);
 
   return {
     slug: exchange.slug,
@@ -92,11 +93,14 @@ export async function getDashboard(exchange: Exchange): Promise<DashboardView> {
     participants: people.map((p) => ({
       id: p.id,
       name: p.name,
+      lastName: p.lastName,
+      familyKey: p.lastNameKey,
       itemCount: p.itemCount,
       hasOpened: p.firstOpenedAt !== null,
       codeReissuedAt: p.codeReissuedAt?.toISOString() ?? null,
     })),
-    exclusions: rules.map((r) => [r.participantAId, r.participantBId]),
+    exclusions: pairs,
+    drawCheck: check && { message: check.message, blocksLock: check.blocksLock },
   };
 }
 
@@ -130,13 +134,12 @@ export async function changePool(exchange: Exchange, action: "lock" | "reopen") 
   const db = getDb();
 
   if (action === "lock") {
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(participants)
-      .where(eq(participants.exchangeId, exchange.id));
-    if (total < MIN_PARTICIPANTS) {
+    const [people, pairs] = await Promise.all([participantsWithCounts(exchange.id), exclusionPairs(exchange.id)]);
+    if (people.length < MIN_PARTICIPANTS) {
       throw new ApiError(422, "too_few", `Wait for at least ${MIN_PARTICIPANTS} people before locking the pool.`);
     }
+    const check = assessDraw(people, pairs);
+    if (check?.blocksLock) throw new ApiError(422, "family_majority", check.message);
   }
 
   const [from, to] = action === "lock" ? (["open", "locked"] as const) : (["locked", "open"] as const);
@@ -173,7 +176,12 @@ export async function replaceExclusions(exchange: Exchange, rawPairs: Array<[str
     }
 
     const people = await tx
-      .select({ id: participants.id })
+      .select({
+        id: participants.id,
+        firstName: participants.firstName,
+        lastName: participants.lastName,
+        lastNameKey: participants.lastNameKey,
+      })
       .from(participants)
       .where(eq(participants.exchangeId, exchange.id));
     const known = new Set(people.map((p) => p.id));
@@ -207,12 +215,10 @@ export async function replaceExclusions(exchange: Exchange, rawPairs: Array<[str
       `The organizer updated the rules (${pairs.length} pair${pairs.length === 1 ? "" : "s"} can't draw each other)`,
     );
 
-    return { pairs: pairs as ExclusionPair[], ids: [...known] };
+    return { pairs: pairs as ExclusionPair[], people };
   });
 
-  const feasible =
-    result.ids.length < MIN_PARTICIPANTS || checkFeasibility(result.ids, result.pairs).result !== "impossible";
-  return { count: result.pairs.length, feasible };
+  return { count: result.pairs.length, feasible: assessDraw(result.people, result.pairs) === null };
 }
 
 /**
@@ -228,11 +234,12 @@ export async function reissueElfCode(exchange: Exchange, participantId: string) 
       .update(participants)
       .set({ elfCodeHash, codeReissuedAt: new Date() })
       .where(and(eq(participants.id, participantId), eq(participants.exchangeId, exchange.id)))
-      .returning({ name: participants.displayName });
+      .returning({ firstName: participants.firstName, lastName: participants.lastName });
     if (!person) throw new ApiError(404, "not_found", "That person isn't in this exchange.");
 
-    await addAudit(tx, exchange.id, "code_reissued", `The organizer issued a new Elf Code for ${person.name}`);
-    return person.name;
+    const fullName = fullNameOf(person.firstName, person.lastName);
+    await addAudit(tx, exchange.id, "code_reissued", `The organizer issued a new Elf Code for ${fullName}`);
+    return fullName;
   });
 
   await clearLimit(elfLimitKey(participantId));
