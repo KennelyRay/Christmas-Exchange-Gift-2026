@@ -1,0 +1,711 @@
+{
+  "id": "cf1fda71-ff2a-41db-8ace-2730956d3095",
+  "prevId": "288acb35-8474-4db1-81e8-f50cd8ef14d2",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.assignments": {
+      "name": "assignments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "giver_id": {
+          "name": "giver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sealed_recipient": {
+          "name": "sealed_recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "assignments_exchange_giver_key": {
+          "name": "assignments_exchange_giver_key",
+          "columns": [
+            {
+              "expression": "exchange_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "giver_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "assignments_exchange_id_exchanges_id_fk": {
+          "name": "assignments_exchange_id_exchanges_id_fk",
+          "tableFrom": "assignments",
+          "columnsFrom": [
+            "exchange_id"
+          ],
+          "tableTo": "exchanges",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "assignments_giver_id_participants_id_fk": {
+          "name": "assignments_giver_id_participants_id_fk",
+          "tableFrom": "assignments",
+          "columnsFrom": [
+            "giver_id"
+          ],
+          "tableTo": "participants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.audit_log": {
+      "name": "audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "audit_event",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "audit_log_exchange_idx": {
+          "name": "audit_log_exchange_idx",
+          "columns": [
+            {
+              "expression": "exchange_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "audit_log_exchange_id_exchanges_id_fk": {
+          "name": "audit_log_exchange_id_exchanges_id_fk",
+          "tableFrom": "audit_log",
+          "columnsFrom": [
+            "exchange_id"
+          ],
+          "tableTo": "exchanges",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exchanges": {
+      "name": "exchanges",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organizer_code_hash": {
+          "name": "organizer_code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "budget_hint_centavos": {
+          "name": "budget_hint_centavos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "exchange_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "reveal_at": {
+          "name": "reveal_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "locked_at": {
+          "name": "locked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drawn_at": {
+          "name": "drawn_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "draw_generation": {
+          "name": "draw_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "commitment_hash": {
+          "name": "commitment_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sealed_manifest": {
+          "name": "sealed_manifest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opened_manifest": {
+          "name": "opened_manifest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seal_opened_at": {
+          "name": "seal_opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chain_step": {
+          "name": "chain_step",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "exchanges_slug_unique": {
+          "name": "exchanges_slug_unique",
+          "columns": [
+            "slug"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exclusions": {
+      "name": "exclusions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "participant_a_id": {
+          "name": "participant_a_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "participant_b_id": {
+          "name": "participant_b_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "exclusions_pair_key": {
+          "name": "exclusions_pair_key",
+          "columns": [
+            {
+              "expression": "exchange_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "participant_a_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "participant_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "exclusions_exchange_id_exchanges_id_fk": {
+          "name": "exclusions_exchange_id_exchanges_id_fk",
+          "tableFrom": "exclusions",
+          "columnsFrom": [
+            "exchange_id"
+          ],
+          "tableTo": "exchanges",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exclusions_participant_a_id_participants_id_fk": {
+          "name": "exclusions_participant_a_id_participants_id_fk",
+          "tableFrom": "exclusions",
+          "columnsFrom": [
+            "participant_a_id"
+          ],
+          "tableTo": "participants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "exclusions_participant_b_id_participants_id_fk": {
+          "name": "exclusions_participant_b_id_participants_id_fk",
+          "tableFrom": "exclusions",
+          "columnsFrom": [
+            "participant_b_id"
+          ],
+          "tableTo": "participants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "exclusions_canonical_order": {
+          "name": "exclusions_canonical_order",
+          "value": "\"exclusions\".\"participant_a_id\" < \"exclusions\".\"participant_b_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.participants": {
+      "name": "participants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_key": {
+          "name": "name_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "elf_code_hash": {
+          "name": "elf_code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_reissued_at": {
+          "name": "code_reissued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_opened_at": {
+          "name": "first_opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "participants_exchange_name_key": {
+          "name": "participants_exchange_name_key",
+          "columns": [
+            {
+              "expression": "exchange_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "participants_exchange_idx": {
+          "name": "participants_exchange_idx",
+          "columns": [
+            {
+              "expression": "exchange_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "participants_exchange_id_exchanges_id_fk": {
+          "name": "participants_exchange_id_exchanges_id_fk",
+          "tableFrom": "participants",
+          "columnsFrom": [
+            "exchange_id"
+          ],
+          "tableTo": "exchanges",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.rate_limits": {
+      "name": "rate_limits",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_ends_at": {
+          "name": "window_ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.wishlist_items": {
+      "name": "wishlist_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_centavos": {
+          "name": "price_centavos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "wishlist_items_participant_position_key": {
+          "name": "wishlist_items_participant_position_key",
+          "columns": [
+            {
+              "expression": "participant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "wishlist_items_participant_id_participants_id_fk": {
+          "name": "wishlist_items_participant_id_participants_id_fk",
+          "tableFrom": "wishlist_items",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "tableTo": "participants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "wishlist_items_price_positive": {
+          "name": "wishlist_items_price_positive",
+          "value": "\"wishlist_items\".\"price_centavos\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.audit_event": {
+      "name": "audit_event",
+      "schema": "public",
+      "values": [
+        "exchange_created",
+        "participant_joined",
+        "budget_changed",
+        "reveal_time_changed",
+        "exclusions_changed",
+        "pool_locked",
+        "pool_reopened",
+        "draw_run",
+        "draw_reset",
+        "code_reissued",
+        "chain_started",
+        "seal_opened"
+      ]
+    },
+    "public.exchange_status": {
+      "name": "exchange_status",
+      "schema": "public",
+      "values": [
+        "open",
+        "locked",
+        "drawn"
+      ]
+    }
+  },
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
