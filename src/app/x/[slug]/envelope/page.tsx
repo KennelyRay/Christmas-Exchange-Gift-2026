@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { EnvelopeClient } from "@/components/envelope";
+import { EnvelopeFrame } from "@/components/mobile-shell";
 import { PageShell } from "@/components/ui";
 import { findExchange, getLobby } from "@/server/exchanges";
 
@@ -11,8 +12,10 @@ export default async function EnvelopePage({ params }: PageProps<"/x/[slug]/enve
   const { participants } = await getLobby(exchange);
 
   return (
-    <PageShell slug={slug} narrow>
-      <EnvelopeClient slug={slug} participants={participants} />
-    </PageShell>
+    <EnvelopeFrame slug={slug} name={exchange.name} revealAt={exchange.revealAt.toISOString()}>
+      <PageShell slug={slug} narrow backOnWideOnly>
+        <EnvelopeClient slug={slug} participants={participants} />
+      </PageShell>
+    </EnvelopeFrame>
   );
 }

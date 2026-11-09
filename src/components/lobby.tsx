@@ -1,56 +1,305 @@
 "use client";
 
-import { EnvelopeSimpleIcon, GiftIcon, ShareNetworkIcon, TelevisionIcon } from "@phosphor-icons/react";
-import Link from "next/link";
-import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { EnvelopeSimpleIcon, GiftIcon, MagnifyingGlassIcon, TelevisionIcon } from "@phosphor-icons/react";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
+import { useSearchParams } from "next/navigation";
+import { useState, type ReactNode } from "react";
 import { burst } from "@/lib/celebrate";
-import { formatManila, nextChristmas } from "@/lib/christmas";
-import { usePoll, useNow } from "@/lib/hooks";
+import { nextChristmas } from "@/lib/christmas";
+import { useDeviceValue, useHasPassed, usePoll } from "@/lib/hooks";
+import { useT } from "@/lib/i18n";
 import { formatPeso } from "@/lib/money";
-import { groupByFamily } from "@/lib/names";
+import type { MessageKey } from "@/lib/messages";
+import { normalizeNamePart } from "@/lib/names";
+import { joinedNameKey, joinTimesFrom, mainActionOf, stageOf, type MainAction, type Stage } from "@/lib/stage";
 import type { LobbyView } from "@/lib/types";
-import { Countdown } from "./countdown";
-import { Button, ErrorNote, LinkButton, Paper } from "./ui";
-import { WaxSeal } from "./wax-seal";
+import { CountdownCard } from "./countdown";
+import { ActivityCard, EmptyJoined, Faq, HowItWorksCard, InstallTip, LanguageToggle, OrganizerCard, SealedCard } from "./lobby-cards";
+import { Dock, TabBar, tabHref, TopBar, type Tab } from "./mobile-shell";
+import { FamilyList } from "./people";
+import { ShareButton } from "./share";
+import { Stepper } from "./stepper";
+import { ErrorNote, inputClass, LinkButton, Panel, Paper } from "./ui";
 
-const VISIBLE_LOG_ENTRIES = 6;
-
-const STATUS_TEXT: Record<LobbyView["status"], string> = {
-  open: "The pool is open. Add your wishlist to join.",
-  locked: "The pool is locked. The draw is coming.",
-  drawn: "The envelopes are sealed. Yours is waiting.",
+/** Everything the two layouts share, worked out once. */
+type LobbyModel = {
+  lobby: LobbyView;
+  stage: Stage;
+  mainAction: MainAction | null;
+  joinedName: string | null;
+  joinTimes: ReadonlyMap<string, string>;
+  christmas: Date;
+  stale: boolean;
 };
 
-function ShareButton({ name }: { name: string }) {
-  const [copied, setCopied] = useState(false);
+function stageMessage({ stage, joinedName }: LobbyModel): [MessageKey, Record<string, string>?] {
+  if (stage === 1) return joinedName ? ["stage.openJoined", { name: joinedName }] : ["stage.open"];
+  if (stage === 2) return ["stage.locked"];
+  return [stage === 3 ? "stage.drawn" : "stage.chain"];
+}
 
-  async function share() {
-    const url = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: name, text: "Add your wishlist to our gift exchange", url });
-        return;
-      }
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // The share sheet was dismissed, or clipboard access was refused.
-    }
-  }
-
+function StageIntro({ model }: { model: LobbyModel }) {
+  const t = useT();
+  const { budgetCentavos } = model.lobby;
+  const [key, values] = stageMessage(model);
   return (
-    <Button variant="ghost" onClick={share}>
-      <ShareNetworkIcon aria-hidden size={20} />
-      <span aria-live="polite">{copied ? "Link copied" : "Share the link"}</span>
-    </Button>
+    <>
+      <p className="text-xl font-semibold">{t(key, values)}</p>
+      {budgetCentavos !== null && (
+        <p className="mt-2 text-lg">
+          {t("stage.budget")} <strong className="font-bold text-gold">{formatPeso(budgetCentavos)}</strong>
+        </p>
+      )}
+    </>
   );
 }
 
+function StaleNote({ show }: { show: boolean }) {
+  const t = useT();
+  if (!show) return null;
+  return (
+    <p role="status" className="rounded-tile bg-pine-800 px-4 py-4 text-base font-bold ring-1 ring-white/25">
+      {t("stage.stale")}
+    </p>
+  );
+}
+
+function MainActionButton({ action, lobby }: { action: MainAction; lobby: LobbyView }) {
+  const t = useT();
+  const base = `/x/${lobby.slug}`;
+  if (action === "add") {
+    return (
+      <LinkButton href={`${base}/join`} icon={<GiftIcon aria-hidden size={22} />}>
+        {t("action.addWishlist")}
+      </LinkButton>
+    );
+  }
+  if (action === "envelope") {
+    return (
+      <LinkButton href={`${base}/envelope`} icon={<EnvelopeSimpleIcon aria-hidden size={22} />}>
+        {t("action.openEnvelope")}
+      </LinkButton>
+    );
+  }
+  if (action === "chain") {
+    return (
+      <LinkButton href={`${base}/chain`} variant="gold" icon={<TelevisionIcon aria-hidden size={22} />}>
+        {t("action.joinChain")}
+      </LinkButton>
+    );
+  }
+  return <ShareButton slug={lobby.slug} name={lobby.name} variant="primary" />;
+}
+
+/** Quieter ways forward, shown beside the one main action. */
+function SecondaryActions({ model }: { model: LobbyModel }) {
+  const t = useT();
+  const { lobby, mainAction, joinedName, stage } = model;
+  return (
+    <>
+      {mainAction !== "share" && <ShareButton slug={lobby.slug} name={lobby.name} />}
+      {stage === 1 && joinedName && (
+        <LinkButton href={`/x/${lobby.slug}/join`} variant="ghost" size="lg">
+          {t("action.addSomeoneElse")}
+        </LinkButton>
+      )}
+      {stage === 4 && (
+        <LinkButton href={`/x/${lobby.slug}/envelope`} variant="ghost" size="lg">
+          {t("action.openEnvelope")}
+        </LinkButton>
+      )}
+    </>
+  );
+}
+
+function JoinedHeading({ count }: { count: number }) {
+  const t = useT();
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h2 className="font-display text-3xl font-semibold">{t("joined.title")}</h2>
+      {count > 0 && <p className="text-lg font-bold text-ink-soft tabular-nums">{count === 1 ? t("joined.count1") : t("joined.count", { n: count })}</p>}
+    </div>
+  );
+}
+
+function DrawWarning({ message }: { message: string | null }) {
+  return message ? <ErrorNote className="mt-6">{message}</ErrorNote> : null;
+}
+
+/* ------------------------------ Phone (under 768px) ------------------------------ */
+
+function MobileHome({ model }: { model: LobbyModel }) {
+  const t = useT();
+  const { lobby, stage, christmas } = model;
+  return (
+    <div className="grid gap-4">
+      <header className="rise">
+        <h1 className="mb-2 font-display text-3xl font-semibold wrap-anywhere">{lobby.name}</h1>
+        <StageIntro model={model} />
+      </header>
+      <StaleNote show={model.stale} />
+      <CountdownCard target={christmas} revealAt={lobby.revealAt} />
+      <Panel>
+        <h2 className="mb-4 font-display text-2xl font-semibold">{t("stage.whereWeAre")}</h2>
+        <Stepper current={stage} direction="column" />
+      </Panel>
+      <div className="grid gap-2">
+        <SecondaryActions model={model} />
+      </div>
+      <HowItWorksCard />
+      <InstallTip />
+    </div>
+  );
+}
+
+function MobileJoined({ model }: { model: LobbyModel }) {
+  const t = useT();
+  const [query, setQuery] = useState("");
+  const { lobby, joinTimes } = model;
+  const count = lobby.participants.length;
+  const search = normalizeNamePart(query);
+  const shown = search ? lobby.participants.filter((person) => normalizeNamePart(person.name).includes(search)) : lobby.participants;
+
+  return (
+    <Paper>
+      <JoinedHeading count={count} />
+      {count === 0 ? (
+        <div className="mt-6">
+          <EmptyJoined slug={lobby.slug} name={lobby.name} canJoin={lobby.status === "open"} />
+        </div>
+      ) : (
+        <>
+          <label htmlFor="joined-search" className="mt-6 mb-2 block text-lg font-bold">
+            {t("joined.search")}
+          </label>
+          <div className="relative mb-6">
+            <MagnifyingGlassIcon aria-hidden size={24} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-ink-soft" />
+            <input id="joined-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" className={`${inputClass} pl-12`} />
+          </div>
+          {shown.length > 0 ? <FamilyList people={shown} joinTimes={joinTimes} layout="rows" /> : <p className="text-lg font-bold">{t("joined.noMatch")}</p>}
+        </>
+      )}
+      <DrawWarning message={lobby.drawWarning} />
+    </Paper>
+  );
+}
+
+function MobileHelp({ model }: { model: LobbyModel }) {
+  const t = useT();
+  const { lobby } = model;
+  return (
+    <div className="grid gap-4">
+      <h1 className="font-display text-4xl font-semibold">{t("nav.help")}</h1>
+      <Faq revealAt={lobby.revealAt} />
+      <Panel>
+        <h2 className="mb-4 font-display text-2xl font-semibold">{t("common.language")}</h2>
+        <LanguageToggle />
+      </Panel>
+      <ActivityCard audit={lobby.audit} />
+      {lobby.commitmentHash && <SealedCard lobby={lobby} />}
+      <OrganizerCard slug={lobby.slug} />
+    </div>
+  );
+}
+
+function MobileLobby({ model, tab, onSelect }: { model: LobbyModel; tab: Tab; onSelect: (tab: Tab) => void }) {
+  const { lobby, mainAction } = model;
+  return (
+    <div className="flex min-h-[100dvh] flex-col md:hidden">
+      <TopBar name={lobby.name} revealAt={lobby.revealAt} />
+      <main className="safe-x flex-1 py-4">
+        {tab === "joined" ? <MobileJoined model={model} /> : tab === "help" ? <MobileHelp model={model} /> : <MobileHome model={model} />}
+      </main>
+      <Dock action={tab === "home" && mainAction ? <MainActionButton action={mainAction} lobby={lobby} /> : undefined}>
+        <TabBar slug={lobby.slug} active={tab} onSelect={onSelect} />
+      </Dock>
+    </div>
+  );
+}
+
+/* ----------------------------- Tablet and computer ----------------------------- */
+
+function Hero({ model }: { model: LobbyModel }) {
+  const { lobby, mainAction, christmas } = model;
+  return (
+    <header className="grid items-start gap-8 md:grid-cols-2 lg:grid-cols-12">
+      <div className="rise lg:col-span-7 xl:col-span-8">
+        <h1 className="font-display text-5xl font-semibold tracking-tight wrap-anywhere lg:text-6xl">{lobby.name}</h1>
+        <div className="mt-6 max-w-[44ch]">
+          <StageIntro model={model} />
+        </div>
+        <div className="mt-8 flex flex-wrap gap-4">
+          {mainAction && <MainActionButton action={mainAction} lobby={lobby} />}
+          <SecondaryActions model={model} />
+        </div>
+      </div>
+      <div className="rise lg:col-span-5 xl:col-span-4" style={{ "--i": 1 } as React.CSSProperties}>
+        <CountdownCard target={christmas} revealAt={lobby.revealAt} />
+      </div>
+    </header>
+  );
+}
+
+function SideColumn({ children }: { children: ReactNode }) {
+  // On tablets an odd card out takes the whole row, so no half-empty column is left behind.
+  return <aside className="grid content-start gap-6 md:grid-cols-2 md:[&>:last-child:nth-child(odd)]:col-span-2 lg:col-span-4 lg:grid-cols-1 lg:[&>:last-child:nth-child(odd)]:col-span-1">{children}</aside>;
+}
+
+function DesktopLobby({ model }: { model: LobbyModel }) {
+  const t = useT();
+  const { lobby, stage, joinTimes } = model;
+  const count = lobby.participants.length;
+
+  return (
+    <main className="mx-auto hidden min-h-[100dvh] w-full max-w-page flex-col gap-8 px-6 py-8 md:flex lg:px-10">
+      <div className="flex justify-end">
+        <LanguageToggle />
+      </div>
+      <Hero model={model} />
+      <StaleNote show={model.stale} />
+
+      <section aria-label={t("stage.whereWeAre")}>
+        <Stepper current={stage} direction="row" />
+      </section>
+
+      <div className="grid flex-1 items-stretch gap-6 lg:grid-cols-12">
+        <section aria-label={t("joined.title")} className="rise lg:col-span-8" style={{ "--i": 2 } as React.CSSProperties}>
+          <Paper className="h-full">
+            <JoinedHeading count={count} />
+            <div className="mt-6">
+              {count === 0 ? (
+                <EmptyJoined slug={lobby.slug} name={lobby.name} canJoin={lobby.status === "open"} />
+              ) : (
+                <FamilyList people={lobby.participants} joinTimes={joinTimes} layout="cards" />
+              )}
+            </div>
+            <DrawWarning message={lobby.drawWarning} />
+          </Paper>
+        </section>
+
+        <SideColumn>
+          {count > 0 && <HowItWorksCard />}
+          <ActivityCard audit={lobby.audit} />
+          {lobby.commitmentHash && <SealedCard lobby={lobby} />}
+          <OrganizerCard slug={lobby.slug} />
+        </SideColumn>
+      </div>
+
+      <Faq revealAt={lobby.revealAt} columns />
+    </main>
+  );
+}
+
+/* ---------------------------------- The lobby ---------------------------------- */
+
+function currentTab(value: string | null): Tab {
+  return value === "joined" || value === "help" ? value : "home";
+}
+
 export function Lobby({ initial }: { initial: LobbyView }) {
+  const t = useT();
   const [justJoined, setJustJoined] = useState<string | null>(null);
-  const [showFullLog, setShowFullLog] = useState(false);
+  const tab = currentTab(useSearchParams().get("tab"));
 
   const { data: lobby, stale } = usePoll<LobbyView>(`/api/exchanges/${initial.slug}`, initial, 4000, (previous, next) => {
     const known = new Set(previous.participants.map((p) => p.id));
@@ -61,157 +310,35 @@ export function Lobby({ initial }: { initial: LobbyView }) {
     }
   });
 
-  const now = useNow();
-  const revealAt = new Date(lobby.revealAt);
-  const chainIsOpen = lobby.status === "drawn" && now !== null && revealAt.getTime() <= now;
-  const log = showFullLog ? lobby.audit : lobby.audit.slice(0, VISIBLE_LOG_ENTRIES);
-  const count = lobby.participants.length;
+  const revealTime = new Date(lobby.revealAt).getTime();
+  const revealPassed = useHasPassed(revealTime);
+  const [joinedName] = useDeviceValue(joinedNameKey(lobby.slug));
+
+  const stage = stageOf(lobby.status, revealPassed);
+  const model: LobbyModel = {
+    lobby,
+    stage,
+    mainAction: mainActionOf(stage, joinedName !== null),
+    joinedName,
+    joinTimes: joinTimesFrom(lobby.audit),
+    christmas: nextChristmas(new Date(lobby.revealAt)),
+    stale,
+  };
+
+  function selectTab(next: Tab) {
+    // Tabs share one page's data, so switching needs no trip to the server.
+    window.history.pushState(null, "", tabHref(lobby.slug, next));
+    window.scrollTo({ top: 0 });
+  }
 
   return (
-    <main className="mx-auto grid w-full max-w-6xl gap-8 px-4 pt-8 pb-16 sm:px-6 lg:grid-cols-[1.45fr_1fr] lg:gap-12">
-      <div className="grid content-start gap-8">
-        <header className="rise">
-          <h1 className="font-display text-5xl leading-none font-semibold tracking-tight break-words sm:text-6xl">{lobby.name}</h1>
-          <p className="mt-4 text-lg text-snow/85">{STATUS_TEXT[lobby.status]}</p>
-          {lobby.budgetCentavos !== null && (
-            <p className="mt-1 text-snow/85">
-              Suggested budget: <strong className="text-gold">{formatPeso(lobby.budgetCentavos)}</strong>
-            </p>
-          )}
+    <MotionConfig reducedMotion="user">
+      <MobileLobby model={model} tab={tab} onSelect={selectTab} />
+      <DesktopLobby model={model} />
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            {lobby.status === "open" && (
-              <LinkButton href={`/x/${lobby.slug}/join`} icon={<GiftIcon aria-hidden size={18} />}>
-                Add my wishlist
-              </LinkButton>
-            )}
-            {lobby.status === "drawn" && (
-              <LinkButton href={`/x/${lobby.slug}/envelope`} icon={<EnvelopeSimpleIcon aria-hidden size={18} />}>
-                Open my envelope
-              </LinkButton>
-            )}
-            {chainIsOpen && (
-              <LinkButton href={`/x/${lobby.slug}/chain`} variant="gold" icon={<TelevisionIcon aria-hidden size={18} />}>
-                Watch the Gift Chain
-              </LinkButton>
-            )}
-            <ShareButton name={lobby.name} />
-          </div>
-        </header>
-
-        {stale && (
-          <p role="status" className="rounded-2xl bg-white/10 px-4 py-3 text-sm">
-            Having trouble refreshing. We&apos;ll keep trying.
-          </p>
-        )}
-
-        <section aria-labelledby="pool-heading" className="rise" style={{ "--i": 1 } as React.CSSProperties}>
-          <Paper>
-            <div className="flex items-baseline justify-between gap-4">
-              <h2 id="pool-heading" className="font-display text-3xl font-semibold">
-                The Pool
-              </h2>
-              <p className="font-semibold tabular-nums text-ink-soft">
-                {count} {count === 1 ? "person" : "people"}
-              </p>
-            </div>
-
-            <p aria-live="polite" className="sr-only">
-              {justJoined ? `${justJoined} just joined` : ""}
-            </p>
-
-            {count === 0 ? (
-              <div className="mt-6 rounded-3xl border-2 border-dashed border-ink/20 px-5 py-10">
-                <p className="font-display text-xl font-semibold">Nobody&apos;s here yet</p>
-                <p className="mt-1 text-ink-soft">Send the link to the family, or be the first to add a wishlist.</p>
-              </div>
-            ) : (
-              <div className="mt-6 grid gap-6">
-                {groupByFamily(lobby.participants).map((family) => (
-                  <section key={family.key} aria-label={`The ${family.label} family`}>
-                    <h3 className="mb-2 flex items-baseline justify-between gap-3 font-display text-xl font-semibold">
-                      <span className="min-w-0 break-words">The {family.label} family</span>
-                      <span className="shrink-0 font-sans text-sm font-medium tabular-nums text-ink-soft">{family.members.length}</span>
-                    </h3>
-                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <AnimatePresence initial={false}>
-                        {family.members.map((person) => (
-                          <motion.li
-                            key={person.id}
-                            layout
-                            initial={{ opacity: 0, scale: 0.8, y: 12 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            transition={{ type: "spring", stiffness: 260, damping: 18 }}
-                            className="flex min-w-0 items-center gap-3 rounded-2xl bg-paper-deep/70 p-2 pr-4"
-                          >
-                            <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-pine-800 font-display font-semibold text-gold">
-                              {person.name.charAt(0).toUpperCase()}
-                            </span>
-                            <span className="min-w-0 flex-1 font-semibold break-words">{person.name}</span>
-                            <span className="shrink-0 text-sm text-ink-soft">
-                              {person.itemCount} {person.itemCount === 1 ? "wish" : "wishes"}
-                            </span>
-                          </motion.li>
-                        ))}
-                      </AnimatePresence>
-                    </ul>
-                  </section>
-                ))}
-              </div>
-            )}
-
-            {lobby.drawWarning && <ErrorNote className="mt-6">{lobby.drawWarning}</ErrorNote>}
-          </Paper>
-        </section>
-      </div>
-
-      <aside className="grid content-start gap-8">
-        <section aria-label="Countdown to Christmas" className="rise" style={{ "--i": 2 } as React.CSSProperties}>
-          <h2 className="mb-2 font-semibold text-snow/85">Until Christmas</h2>
-          <Countdown target={nextChristmas(new Date(lobby.revealAt))} doneLabel="Merry Christmas!" />
-          <p className="mt-3 text-sm text-snow/80">Gift Chain reveal: {formatManila(lobby.revealAt)} (Manila time)</p>
-        </section>
-
-        {lobby.commitmentHash && (
-          <section className="rise rounded-3xl bg-white/6 p-5 ring-1 ring-white/12">
-            <div className="flex items-center gap-3">
-              <WaxSeal className="size-11 shrink-0" />
-              <h2 className="font-display text-xl font-semibold">Sealed draw #{lobby.drawGeneration}</h2>
-            </div>
-            <p className="mt-3 text-sm text-snow/85">
-              This fingerprint locks in the result. If anyone changes a single name, it won&apos;t match when the seal is opened.
-            </p>
-            <p className="mt-3 font-mono text-xs leading-relaxed break-all text-gold">{lobby.commitmentHash}</p>
-            <Link href={`/x/${lobby.slug}/seal`} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">
-              {lobby.sealOpened ? "Check the opened seal" : "How the seal works"}
-            </Link>
-          </section>
-        )}
-
-        <section aria-labelledby="log-heading">
-          <h2 id="log-heading" className="font-display text-xl font-semibold">
-            What&apos;s happened
-          </h2>
-          <p className="mt-1 text-sm text-snow/80">Everyone sees this log, and it can&apos;t be edited.</p>
-          <ol className="mt-3 divide-y divide-white/10">
-            {log.map((entry) => (
-              <li key={entry.id} className="py-2.5">
-                <p className="text-sm break-words">{entry.detail}</p>
-                <p className="text-xs text-snow/70">{formatManila(entry.at)}</p>
-              </li>
-            ))}
-          </ol>
-          {lobby.audit.length > VISIBLE_LOG_ENTRIES && (
-            <button type="button" onClick={() => setShowFullLog(!showFullLog)} className="min-h-11 text-sm font-semibold underline underline-offset-4">
-              {showFullLog ? "Show less" : `Show all ${lobby.audit.length}`}
-            </button>
-          )}
-        </section>
-
-        <Link href={`/x/${lobby.slug}/organizer`} className="inline-flex min-h-11 items-center text-sm text-snow/80 underline underline-offset-4">
-          I&apos;m the organizer
-        </Link>
-      </aside>
+      <p aria-live="polite" className="sr-only">
+        {justJoined ? t("joined.toast", { name: justJoined }) : ""}
+      </p>
 
       <AnimatePresence>
         {justJoined && (
@@ -223,12 +350,12 @@ export function Lobby({ initial }: { initial: LobbyView }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}
             transition={{ type: "spring", stiffness: 200, damping: 20 }}
-            className="fixed inset-x-4 bottom-5 z-10 mx-auto min-h-12 max-w-sm rounded-full bg-gold px-5 py-3 text-center font-semibold text-ink shadow-[0_16px_32px_-16px_rgba(11,35,28,0.9)]"
+            className="fixed inset-x-4 top-20 z-30 mx-auto min-h-tap-lg max-w-md rounded-card bg-gold px-6 py-2 text-center text-lg font-bold text-ink shadow-card md:top-auto md:bottom-6"
           >
-            {justJoined} just joined the pool
+            {t("joined.toast", { name: justJoined })}
           </motion.button>
         )}
       </AnimatePresence>
-    </main>
+    </MotionConfig>
   );
 }

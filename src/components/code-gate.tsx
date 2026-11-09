@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "@/lib/client-api";
 import { Button, ErrorNote, Field, inputClass } from "./ui";
 
@@ -9,9 +9,12 @@ export function CodeGate({ slug, onSuccess }: { slug: string; onSuccess: () => v
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (sending.current) return;
+    sending.current = true;
     setError("");
     setBusy(true);
     try {
@@ -20,6 +23,7 @@ export function CodeGate({ slug, onSuccess }: { slug: string; onSuccess: () => v
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
@@ -33,7 +37,7 @@ export function CodeGate({ slug, onSuccess }: { slug: string; onSuccess: () => v
       </Field>
       {error && <ErrorNote>{error}</ErrorNote>}
       <Button type="submit" busy={busy} className="w-full">
-        {busy ? "Checking..." : "Sign in"}
+        {busy ? "Checking…" : "Sign in"}
       </Button>
     </form>
   );

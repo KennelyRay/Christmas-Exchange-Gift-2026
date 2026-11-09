@@ -104,13 +104,15 @@ function CreateExchange({ onBack }: { onBack: () => void }) {
     return (
       <>
         <h1 className="mb-1 font-display text-3xl font-semibold">Your exchange is ready</h1>
-        <p className="mb-5 text-ink-soft">This code is what lets you lock the pool and run the draw. Keep it to yourself.</p>
+        <p className="mb-5 text-ink-soft">This code is what lets you close joining and run the draw. Keep it to yourself.</p>
         <SecretCode
           label="Organizer Code"
           code={created.organizerCode}
           explanation="We only keep a scrambled copy, so this is the one time you'll see it. There's no way to recover it later."
           confirmLabel="I saved my Organizer Code"
-          doneLabel="Open the pool"
+          doneLabel="Open our exchange"
+          exchangeName={name}
+          sendText={`Organizer Code for ${name}: ${created.organizerCode}. Keep this private!`}
           onDone={() => router.push(`/x/${created.slug}`)}
         />
       </>
@@ -119,8 +121,8 @@ function CreateExchange({ onBack }: { onBack: () => void }) {
 
   return (
     <form onSubmit={create} className="grid gap-5" noValidate>
-      <button type="button" onClick={onBack} className="-ml-2 flex min-h-11 w-fit items-center gap-2 rounded-full px-2 text-sm font-semibold">
-        <ArrowLeftIcon aria-hidden size={18} />
+      <button type="button" onClick={onBack} className="-ml-2 flex min-h-tap w-fit items-center gap-2 rounded-full px-2 text-lg font-bold">
+        <ArrowLeftIcon aria-hidden size={22} />
         Back
       </button>
 
@@ -148,7 +150,7 @@ function CreateExchange({ onBack }: { onBack: () => void }) {
       {formError && <ErrorNote>{formError}</ErrorNote>}
 
       <Button type="submit" busy={busy} className="w-full" icon={<ArrowRightIcon aria-hidden size={18} />}>
-        {busy ? "Sealing..." : "Create our exchange"}
+        {busy ? "Creating…" : "Create our exchange"}
       </Button>
     </form>
   );
@@ -158,7 +160,7 @@ export function Landing() {
   const [organizing, setOrganizing] = useState(false);
 
   return (
-    <main className="mx-auto grid min-h-[100dvh] w-full max-w-6xl content-center items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:gap-x-16">
+    <main className="safe-top safe-bottom mx-auto grid min-h-[100dvh] w-full max-w-page content-center items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:gap-x-16">
       <Paper className="rise">
         {organizing ? <CreateExchange onBack={() => setOrganizing(false)} /> : <FindExchange onOrganizer={() => setOrganizing(true)} />}
       </Paper>
@@ -172,7 +174,7 @@ export function Landing() {
           <br />
           <span className="text-gold">Tear one open.</span>
         </h2>
-        <p className="mt-6 max-w-[46ch] text-lg leading-relaxed text-snow/85">
+        <p className="mt-6 max-w-[46ch] text-xl">
           A gift exchange for your family where nobody, not even the organizer, knows who got whom until they break
           their own wax seal.
         </p>

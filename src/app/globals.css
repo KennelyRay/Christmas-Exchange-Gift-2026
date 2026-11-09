@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Tailwind v4 has no tailwind.config: this block is the config.
+ * Type is rem-based so it follows the phone's text size. The smallest size in the
+ * app is 1rem, which is why text-xs and text-sm are deliberately the same.
+ * Spacing stays on an 8px grid: use the even steps (2, 4, 6, 8, 12...).
+ */
 @theme {
   --color-pine-950: #0b231c;
   --color-pine-900: #103127;
@@ -8,15 +14,50 @@
   --color-paper: #fbf4e6;
   --color-paper-deep: #efe2c8;
   --color-ink: #2a1c13;
-  --color-ink-soft: #5f4a3a;
+  --color-ink-soft: #4d3a2c;
   --color-wax: #a3262b;
   --color-wax-deep: #7d1a20;
   --color-gold: #e0bb6b;
   --color-gold-deep: #80590f;
   --color-snow: #f7f3ea;
+  --color-snow-soft: #e9e4d6;
 
   --font-display: var(--font-fraunces);
   --font-sans: var(--font-jakarta);
+
+  --text-xs: 1rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1.125rem;
+  --text-base--line-height: 1.6;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.55;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.35;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 2.125rem;
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 1.15;
+  --text-5xl: 3.25rem;
+  --text-5xl--line-height: 1.08;
+  --text-6xl: 4rem;
+  --text-6xl--line-height: 1.05;
+
+  --radius-field: 1rem;
+  --radius-tile: 1.25rem;
+  --radius-card: 1.75rem;
+
+  --shadow-card: 0 16px 40px -24px rgb(5 20 15 / 0.75);
+  --shadow-cta: 0 12px 24px -12px rgb(125 26 32 / 0.9);
+  --shadow-dock: 0 -12px 32px -16px rgb(5 20 15 / 0.85);
+
+  --spacing-tap: 3rem;
+  --spacing-tap-lg: 3.5rem;
+
+  --container-page: 85rem;
 
   --ease-settle: cubic-bezier(0.32, 0.72, 0, 1);
 
@@ -44,19 +85,56 @@
   }
 }
 
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 html {
   background: var(--color-pine-950);
   -webkit-text-size-adjust: 100%;
 }
 
+/* iPhones only follow the system text size when the page asks for this font. */
+@supports (font: -apple-system-body) and (-webkit-touch-callout: none) {
+  html {
+    font: -apple-system-body;
+  }
+}
+
 body {
+  color: var(--color-snow);
+  font-family: var(--font-sans), sans-serif;
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: var(--text-base--line-height);
+  /* A long name at a large text size must wrap, never push the page sideways. */
+  overflow-wrap: anywhere;
+  --focus-color: var(--color-gold);
+}
+
+/* A fixed layer instead of background-attachment: fixed, which is janky on phones. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
   background:
     radial-gradient(120% 70% at 15% 0%, var(--color-pine-800) 0%, transparent 70%),
     var(--color-pine-950);
-  background-attachment: fixed;
-  color: var(--color-snow);
-  font-family: var(--font-sans), sans-serif;
-  --focus-color: var(--color-gold);
 }
 
 .paper {
@@ -81,10 +159,64 @@ dialog::backdrop {
   background: rgb(11 35 28 / 0.8);
 }
 
+dialog[open] {
+  animation: fade-in 200ms var(--ease-settle) both;
+}
+
+@media (width < 48rem) {
+  dialog[open] {
+    animation: sheet-up 320ms var(--ease-settle) both;
+  }
+}
+
 /* A stagger index set inline drives the cascade: style={{ "--i": n }}. */
 .rise {
   animation: var(--animate-rise);
   animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@utility safe-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+@utility safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+/* Pixels on purpose: the gutter shouldn't take room from text when text is enlarged. */
+@utility safe-x {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+/* Very large text keeps the room for words: padding and gaps stay their normal pixel size. */
+[data-big-text] {
+  --spacing: 0.125rem;
+}
+
+/*
+ * The dock holds real layout space (sticky, not fixed), so content is never hidden
+ * behind it and nothing shifts while it loads. --keyboard-offset is only non-zero
+ * where the on-screen keyboard covers the page instead of resizing it (iPhones).
+ */
+@layer components {
+  .dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    transform: translateY(calc(var(--keyboard-offset, 0px) * -1));
+  }
+
+  /* Very large text: stop pinning bars, or they would fill the screen. */
+  [data-big-text] .dock {
+    position: static;
+    transform: none;
+  }
+
+  /* Typing needs the room, and the tabs are not useful with the keyboard up. */
+  [data-keyboard-open] .tab-bar {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

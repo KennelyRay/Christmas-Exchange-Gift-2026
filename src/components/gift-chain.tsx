@@ -5,8 +5,9 @@ import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { finale } from "@/lib/celebrate";
 import { formatManila } from "@/lib/christmas";
-import { api, ClientApiError, errorMessage } from "@/lib/client-api";
+import { api, ClientApiError } from "@/lib/client-api";
 import { usePoll } from "@/lib/hooks";
+import { friendlyError, useT } from "@/lib/i18n";
 import { playChime, playFanfare, playTick, toggleMuted, unlockAudio, useMuted } from "@/lib/sound";
 import type { ChainView } from "@/lib/types";
 import { CodeGate } from "./code-gate";
@@ -61,13 +62,14 @@ function Reel({ names, target, size, onDone }: { names: string[]; target: string
 }
 
 function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; onSpinDone: () => void }) {
+  const t = useT();
   const { step, totalSteps, sequence, names } = view;
 
   if (step === 0) {
     return (
       <div>
-        <p className="text-[clamp(1.5rem,3vw,2.5rem)] text-snow/85">Everyone ready?</p>
-        <h1 className={`font-display leading-none font-semibold tracking-tight text-gold ${HEADLINE_SIZE}`}>Who goes first?</h1>
+        <p className="text-[clamp(1.5rem,3vw,2.5rem)]">{t("chain.ready")}</p>
+        <h1 className={`font-display leading-none font-semibold tracking-tight text-gold ${HEADLINE_SIZE}`}>{t("chain.first")}</h1>
       </div>
     );
   }
@@ -80,11 +82,11 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
   return (
     <div>
       {giver ? (
-        <p className="text-[clamp(1.5rem,3.5vw,3rem)] text-snow/90">
-          <strong className="font-semibold text-snow">{giver}</strong> gives a gift to
+        <p className="text-[clamp(1.5rem,3.5vw,3rem)]">
+          <strong className="font-semibold">{giver}</strong> {t("chain.gives")}
         </p>
       ) : (
-        <p className="text-[clamp(1.5rem,3.5vw,3rem)] text-snow/90">The chain begins with</p>
+        <p className="text-[clamp(1.5rem,3.5vw,3rem)]">{t("chain.begins")}</p>
       )}
 
       {spinning ? (
@@ -95,21 +97,22 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 220, damping: 14 }}
-          className={`font-display leading-[1.25] font-semibold tracking-tight break-words text-gold ${size}`}
+          className={`font-display leading-[1.25] font-semibold tracking-tight wrap-anywhere text-gold ${size}`}
         >
           {current}
         </motion.h1>
       )}
 
-      {closesLoop && !spinning && <p className="text-[clamp(1.25rem,2.5vw,2rem)] text-snow/90">and the chain is back where it started.</p>}
+      {closesLoop && !spinning && <p className="text-[clamp(1.25rem,2.5vw,2rem)]">{t("chain.loop")}</p>}
     </div>
   );
 }
 
 function Garland({ sequence }: { sequence: string[] }) {
+  const t = useT();
   if (sequence.length === 0) return null;
   return (
-    <ol aria-label="The chain so far" className="flex flex-wrap items-center gap-x-3 gap-y-2 text-lg sm:text-2xl">
+    <ol aria-label={t("chain.soFar")} className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xl sm:text-2xl">
       {sequence.map((name, index) => (
         <li key={`${name}-${index}`} className="flex items-center gap-3">
           {index > 0 && <GiftIcon aria-hidden className="text-gold" />}
@@ -121,6 +124,7 @@ function Garland({ sequence }: { sequence: string[] }) {
 }
 
 function LiveChain({ slug, initial, startsAsOrganizer }: { slug: string; initial: Live; startsAsOrganizer: boolean }) {
+  const t = useT();
   const [view, setView] = useState(initial);
   const [spinning, setSpinning] = useState(false);
   const [isOrganizer, setIsOrganizer] = useState(startsAsOrganizer);
@@ -163,7 +167,7 @@ function LiveChain({ slug, initial, startsAsOrganizer }: { slug: string; initial
       receive(await api<ChainView>(`/api/exchanges/${slug}/chain`, { body: { expectedStep: view.step } }));
     } catch (caught) {
       if (caught instanceof ClientApiError && caught.status === 401) setIsOrganizer(false);
-      setError(errorMessage(caught));
+      setError(friendlyError(caught, t));
     } finally {
       pressing.current = false;
     }
@@ -182,16 +186,17 @@ function LiveChain({ slug, initial, startsAsOrganizer }: { slug: string; initial
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const nextLabel = view.step === 0 ? "Spin for the first giver" : `Who does ${view.sequence[view.step - 1]} give to?`;
+  const nextLabel = view.step === 0 ? t("chain.spinFirst") : t("chain.spinNext", { name: view.sequence[view.step - 1] });
 
   return (
-    <main onClick={() => void advance()} className="mx-auto flex min-h-[100dvh] w-full max-w-[1400px] flex-col justify-between gap-8 px-4 py-6 sm:px-10 sm:py-10">
+    <main onClick={() => void advance()} className="safe-top safe-bottom safe-x mx-auto flex min-h-[100dvh] w-full max-w-[1400px] flex-col justify-between gap-8 sm:px-10 sm:py-10">
       <header className="flex items-center justify-between gap-4" onClick={(e) => e.stopPropagation()}>
-        <LinkButton href={`/x/${slug}`} variant="ghost" className="text-snow">
-          Back to the pool
+        <LinkButton href={`/x/${slug}`} variant="ghost" fit className="text-snow">
+          {t("chain.back")}
         </LinkButton>
-        <button type="button" onClick={toggleMuted} aria-label={muted ? "Turn sound on" : "Mute sound"} aria-pressed={muted} className="flex size-12 items-center justify-center rounded-full ring-1 ring-white/30 hover:bg-white/10">
-          {muted ? <SpeakerSlashIcon aria-hidden size={24} /> : <SpeakerHighIcon aria-hidden size={24} />}
+        <button type="button" onClick={toggleMuted} className="flex min-h-tap items-center gap-2 rounded-full px-4 py-1 text-base font-bold ring-2 ring-white/50 hover:bg-white/10">
+          {muted ? <SpeakerSlashIcon aria-hidden size={24} className="shrink-0" /> : <SpeakerHighIcon aria-hidden size={24} className="shrink-0" />}
+          {muted ? t("chain.soundOn") : t("chain.soundOff")}
         </button>
       </header>
 
@@ -210,17 +215,17 @@ function LiveChain({ slug, initial, startsAsOrganizer }: { slug: string; initial
 
         {finished && !spinning ? (
           <div className="flex flex-wrap items-center gap-4">
-            <p className="font-display text-3xl font-semibold">Merry Christmas!</p>
+            <p className="font-display text-3xl font-semibold">{t("chain.merry")}</p>
             <LinkButton href={`/x/${slug}/seal`} variant="gold">
-              Check the seal
+              {t("chain.checkSeal")}
             </LinkButton>
           </div>
         ) : isOrganizer ? (
           <div className="flex flex-wrap items-center gap-4">
-            <Button onClick={() => void advance()} disabled={spinning} className="text-lg" icon={<CaretRightIcon aria-hidden size={20} />}>
-              {spinning ? "Spinning..." : nextLabel}
+            <Button onClick={() => void advance()} disabled={spinning} icon={<CaretRightIcon aria-hidden size={22} />}>
+              {spinning ? t("chain.spinning") : nextLabel}
             </Button>
-            <p className="hidden text-snow/80 sm:block">or press the spacebar, or tap anywhere</p>
+            <p className="hidden text-lg sm:block">{t("chain.keys")}</p>
           </div>
         ) : showSignIn ? (
           <Paper className="max-w-md">
@@ -235,9 +240,9 @@ function LiveChain({ slug, initial, startsAsOrganizer }: { slug: string; initial
           </Paper>
         ) : (
           <div className="flex flex-wrap items-center gap-4">
-            <p className="text-snow/85">Following along. The organizer is running the reveal.</p>
+            <p className="text-lg">{t("chain.following")}</p>
             <Button variant="ghost" onClick={() => setShowSignIn(true)} className="text-snow">
-              I&apos;m the organizer
+              {t("chain.organizer")}
             </Button>
           </div>
         )}
@@ -258,23 +263,26 @@ type Waiting = Exclude<ChainView, Live>;
 /** Keeps polling so a TV left on opens by itself at the reveal time. */
 function WaitingScreen({ slug, view, onChange }: { slug: string; view: Waiting; onChange: (next: ChainView) => void }) {
   usePoll<ChainView>(`/api/exchanges/${slug}/chain`, view, 5000, (_, next) => onChange(next));
+  const t = useT();
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-[1400px] flex-col justify-center gap-8 px-4 py-10 sm:px-10">
+    <main className="safe-top safe-bottom safe-x mx-auto flex min-h-[100dvh] w-full max-w-[1400px] flex-col justify-center gap-8 py-10 sm:px-10">
       <h1 className="font-display text-5xl leading-none font-semibold tracking-tight sm:text-8xl">
-        {view.state === "sealed" ? "The chain is sealed" : "No draw yet"}
+        {t(view.state === "sealed" ? "chain.sealed" : "chain.noDraw")}
       </h1>
       {view.state === "sealed" ? (
         <>
-          <p className="text-xl text-snow/85">It opens {formatManila(view.revealAt)} (Manila time). Nobody can open it sooner, not even the organizer.</p>
-          <Countdown target={new Date(view.revealAt)} doneLabel="Opening..." size="lg" />
+          <p className="text-xl">{t("chain.opens", { date: formatManila(view.revealAt), manila: t("common.manila") })}</p>
+          <div className="max-w-3xl">
+            <Countdown target={new Date(view.revealAt)} doneLabel={t("chain.opening")} size="lg" />
+          </div>
         </>
       ) : (
-        <p className="text-xl text-snow/85">The Gift Chain appears here once the organizer has run the draw.</p>
+        <p className="text-xl">{t("chain.noDrawBody")}</p>
       )}
       <div>
         <LinkButton href={`/x/${slug}`} variant="gold">
-          Back to the pool
+          {t("chain.back")}
         </LinkButton>
       </div>
     </main>

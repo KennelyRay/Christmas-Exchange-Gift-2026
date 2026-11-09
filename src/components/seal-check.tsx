@@ -54,17 +54,17 @@ function OpenedSeal({ seal }: { seal: SealView & { manifest: string } }) {
         <ol className="mt-4 divide-y divide-ink/10">
           {manifest.assignments.map(({ giver, recipient }) => (
             <li key={giver} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 font-semibold">
-              <span className="break-words">{giver}</span>
+              <span className="wrap-anywhere">{giver}</span>
               <GiftIcon aria-label="gives to" className="text-wax" />
-              <span className="break-words">{recipient}</span>
+              <span className="wrap-anywhere">{recipient}</span>
             </li>
           ))}
         </ol>
       </Paper>
 
-      <details className="rounded-3xl bg-white/6 p-5 ring-1 ring-white/12">
-        <summary className="min-h-6 font-semibold">Check it yourself with any SHA-256 tool</summary>
-        <p className="mt-3 text-sm text-snow/85">Hash this exact text. The result should equal the fingerprint above.</p>
+      <details className="rounded-card bg-pine-800/90 p-6 ring-1 ring-white/20">
+        <summary className="flex min-h-tap items-center font-bold">Check it yourself with any SHA-256 tool</summary>
+        <p className="mt-4 text-base">Hash this exact text. The result should equal the fingerprint above.</p>
         <pre className="mt-3 overflow-x-auto rounded-2xl bg-pine-950 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">{seal.manifest}</pre>
       </details>
     </div>
@@ -77,25 +77,25 @@ export function SealCheck({ seal }: { seal: SealView }) {
       <header className="rise">
         <WaxSeal className="mb-4 size-16" />
         <h1 className="font-display text-4xl font-semibold sm:text-5xl">The seal</h1>
-        <p className="mt-3 text-snow/85">
+        <p className="mt-4 text-lg">
           The moment the draw ran, the app published a fingerprint of the full result, mixed with a secret random value. After
           Christmas the list and that value are revealed, so anyone can confirm the result was never swapped.
         </p>
       </header>
 
       {seal.commitmentHash ? (
-        <section className="rounded-3xl bg-white/6 p-5 ring-1 ring-white/12">
-          <h2 className="font-semibold">Published fingerprint (SHA-256)</h2>
+        <section className="rounded-card bg-pine-800/90 p-6 ring-1 ring-white/20">
+          <h2 className="font-bold">Published fingerprint (SHA-256)</h2>
           <p className="mt-2 font-mono text-sm leading-relaxed break-all text-gold">{seal.commitmentHash}</p>
         </section>
       ) : (
-        <p className="rounded-3xl bg-white/6 p-5 ring-1 ring-white/12">Nothing is sealed yet. The fingerprint appears here once the draw has run.</p>
+        <p className="rounded-card bg-pine-800/90 p-6 ring-1 ring-white/20">Nothing is sealed yet. The fingerprint appears here once the draw has run.</p>
       )}
 
       {seal.manifest ? (
         <OpenedSeal seal={{ ...seal, manifest: seal.manifest }} />
       ) : (
-        seal.commitmentHash && <p className="text-snow/85">Still sealed. The organizer can open it after the Gift Chain finishes.</p>
+        seal.commitmentHash && <p className="text-lg">Still sealed. The organizer can open it after the Gift Chain finishes.</p>
       )}
     </div>
   );

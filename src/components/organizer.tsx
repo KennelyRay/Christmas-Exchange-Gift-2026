@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircleIcon, EnvelopeOpenIcon, EnvelopeSimpleIcon, LockKeyIcon, LockKeyOpenIcon, TelevisionIcon, XIcon } from "@phosphor-icons/react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatManila, fromManilaInputValue, toManilaInputValue } from "@/lib/christmas";
 import { api, ClientApiError, errorMessage } from "@/lib/client-api";
 import { formatPeso, parsePesoToCentavos } from "@/lib/money";
@@ -58,9 +58,9 @@ function SettingsForm({ dashboard, onSave }: { dashboard: DashboardView; onSave:
       </Field>
       <div className="flex items-center gap-3">
         <Button type="submit" variant="ghost" busy={busy}>
-          Save settings
+          {busy ? "Saving…" : "Save settings"}
         </Button>
-        {saved && <span role="status" className="font-semibold text-pine-700">Saved</span>}
+        {saved && <span role="status" className="text-lg font-bold text-pine-700">Saved</span>}
       </div>
     </form>
   );
@@ -98,7 +98,7 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
       ) : (
         !locked && (
           <div>
-            <p className="mb-2 text-sm font-semibold">Tap everyone in a couple or household</p>
+            <p className="mb-2 text-lg font-bold">Tap everyone in a couple or household</p>
             <div className="flex flex-wrap gap-2">
               {dashboard.participants.map((person) => {
                 const active = selected.includes(person.id);
@@ -108,7 +108,7 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
                     type="button"
                     aria-pressed={active}
                     onClick={() => toggle(person.id)}
-                    className={`min-h-11 max-w-full rounded-full px-4 py-1.5 font-semibold break-words ring-1 transition duration-200 ease-settle active:scale-[0.98] ${active ? "bg-pine-800 text-snow ring-pine-800" : "ring-ink/30 hover:bg-ink/5"}`}
+                    className={`min-h-tap max-w-full rounded-full px-4 py-2 font-bold wrap-anywhere ring-2 transition duration-200 ease-settle active:scale-[0.98] ${active ? "bg-pine-800 text-snow ring-pine-800" : "ring-ink/40 hover:bg-ink/5"}`}
                   >
                     {person.name}
                   </button>
@@ -131,7 +131,7 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
         <ul className="divide-y divide-ink/10">
           {dashboard.exclusions.map(([a, b]) => (
             <li key={`${a}-${b}`} className="flex items-center justify-between gap-3 py-1.5">
-              <span className="min-w-0 break-words">
+              <span className="min-w-0 wrap-anywhere">
                 <strong>{nameOf(a)}</strong> and <strong>{nameOf(b)}</strong>
               </span>
               {!locked && (
@@ -139,9 +139,10 @@ function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; 
                   type="button"
                   aria-label={`Remove the rule for ${nameOf(a)} and ${nameOf(b)}`}
                   onClick={() => void save(dashboard.exclusions.filter(([x, y]) => x !== a || y !== b))}
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-ink/10"
+                  className="flex min-h-tap shrink-0 items-center gap-2 rounded-full px-4 font-bold ring-2 ring-ink/30 hover:bg-ink/10"
                 >
                   <XIcon aria-hidden size={18} />
+                  Remove
                 </button>
               )}
             </li>
@@ -162,6 +163,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
   const [reason, setReason] = useState("");
   const [reissueTarget, setReissueTarget] = useState<{ id: string; name: string } | null>(null);
   const [issuedCode, setIssuedCode] = useState<{ name: string; elfCode: string } | null>(null);
+  const performing = useRef(false);
 
   const base = `/api/exchanges/${slug}/organizer`;
 
@@ -170,6 +172,8 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
   }
 
   async function perform(action: () => Promise<unknown>) {
+    if (performing.current) return false;
+    performing.current = true;
     setBusy(true);
     setError("");
     try {
@@ -181,6 +185,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
       setError(errorMessage(caught));
       return false;
     } finally {
+      performing.current = false;
       setBusy(false);
       setConfirming(null);
     }
@@ -191,7 +196,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
       <div className="grid gap-6">
         <header className="rise">
           <h1 className="font-display text-4xl font-semibold sm:text-5xl">Organizer sign-in</h1>
-          <p className="mt-3 text-snow/85">You run the exchange, but you&apos;ll never see who got whom.</p>
+          <p className="mt-3 text-snow-soft">You run the exchange, but you&apos;ll never see who got whom.</p>
         </header>
         {error && <ErrorNote>{error}</ErrorNote>}
         <Paper>
@@ -257,8 +262,8 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
   return (
     <div className="grid gap-6">
       <header className="rise">
-        <h1 className="font-display text-4xl leading-tight font-semibold break-words sm:text-5xl">{dashboard.name}</h1>
-        <p className="mt-3 text-snow/85">
+        <h1 className="font-display text-4xl leading-tight font-semibold wrap-anywhere sm:text-5xl">{dashboard.name}</h1>
+        <p className="mt-3 text-snow-soft">
           {status === "open" && "Waiting for wishlists. Lock the pool when everyone is in."}
           {status === "locked" && "The pool is locked. Set any rules, then run the draw."}
           {isDrawn && `The draw is sealed. ${opened} of ${count} envelopes opened so far.`}
@@ -271,23 +276,26 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
         </div>
       )}
 
-      <Section title={`The pool (${count})`} note="Lost codes can be replaced here. Everyone will see that you did it.">
+      <Section title={`Who's joined (${count})`} note="Lost codes can be replaced here. Everyone will see that you did it.">
         {count === 0 ? (
-          <p className="text-ink-soft">Nobody has joined yet. Share the pool link with the family.</p>
+          <p className="text-ink-soft">Nobody has joined yet. Share the link with the family.</p>
         ) : (
           <ul className="divide-y divide-ink/10">
             {dashboard.participants.map((person) => (
-              <li key={person.id} className="flex items-center gap-3 py-2">
+              <li key={person.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-4">
                 {isDrawn &&
                   (person.hasOpened ? (
-                    <EnvelopeOpenIcon size={22} className="shrink-0 text-pine-700" aria-label="Opened" />
+                    <EnvelopeOpenIcon aria-hidden size={26} className="shrink-0 text-pine-700" />
                   ) : (
-                    <EnvelopeSimpleIcon size={22} className="shrink-0 text-ink-soft" aria-label="Not opened yet" />
+                    <EnvelopeSimpleIcon aria-hidden size={26} className="shrink-0 text-ink-soft" />
                   ))}
-                <span className="min-w-0 flex-1 font-semibold break-words">{person.name}</span>
-                <button type="button" onClick={() => setReissueTarget(person)} className="min-h-11 shrink-0 px-2 text-sm font-semibold underline underline-offset-4">
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="text-lg font-bold wrap-anywhere">{person.name}</p>
+                  {isDrawn && <p className="text-base text-ink-soft">{person.hasOpened ? "Opened" : "Not opened yet"}</p>}
+                </div>
+                <Button variant="ghost" fit onClick={() => setReissueTarget(person)} className="shrink-0">
                   New code
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -395,7 +403,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
               Cancel
             </Button>
             <Button busy={busy} onClick={() => active && void perform(active.run)}>
-              {active?.action}
+              {busy ? "Working…" : active?.action}
             </Button>
           </>
         }
@@ -425,7 +433,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
                 setIssuedCode(result);
               }}
             >
-              Issue a new code
+              {busy ? "Working…" : "Issue a new code"}
             </Button>
           </>
         }
@@ -442,13 +450,17 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
             explanation="Pass this on privately. It won't be shown again."
             confirmLabel="I've passed it on"
             doneLabel="Done"
+            ownerName={issuedCode.name}
+            exchangeName={dashboard.name}
+            sendLabel="Send it to them"
+            sendText={`Your new secret code (Elf Code) for ${dashboard.name}: ${issuedCode.elfCode}. Keep this private!`}
             onDone={() => setIssuedCode(null)}
           />
         )}
       </Dialog>
 
       {dashboard.budgetCentavos !== null && isDrawn && (
-        <p className="text-sm text-snow/80">Suggested budget: {formatPeso(dashboard.budgetCentavos)}</p>
+        <p className="text-base">Suggested budget: {formatPeso(dashboard.budgetCentavos)}</p>
       )}
     </div>
   );

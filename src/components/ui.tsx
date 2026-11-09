@@ -1,48 +1,59 @@
 "use client";
 
-import { ArrowLeftIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CircleNotchIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useId, useRef, type ComponentProps, type ReactNode } from "react";
+import { useT } from "@/lib/i18n";
 
 const pressable =
-  "inline-flex min-h-12 items-center justify-center gap-3 rounded-full font-semibold transition duration-300 ease-settle active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+  "group inline-flex items-center justify-center gap-3 rounded-full text-center font-bold transition duration-300 ease-settle active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60";
 
 const variants = {
-  primary: "bg-wax text-snow hover:bg-wax-deep shadow-[0_10px_24px_-12px_rgba(125,26,32,0.9)]",
+  primary: "bg-wax text-snow shadow-cta hover:bg-wax-deep",
   gold: "bg-gold text-ink hover:bg-[#ecca80]",
-  ghost: "bg-transparent text-current ring-1 ring-current/40 hover:bg-current/10",
+  ghost: "bg-transparent text-current ring-2 ring-current/60 hover:bg-current/10",
+};
+
+const sizes = {
+  md: "min-h-tap text-base",
+  lg: "min-h-tap-lg text-lg",
 };
 
 type Variant = keyof typeof variants;
+type Size = keyof typeof sizes;
+type Shape = { variant?: Variant; size?: Size; icon?: ReactNode; fit?: boolean };
 
-function buttonClass(variant: Variant, hasIcon: boolean, extra = "") {
-  return `${pressable} ${variants[variant]} ${hasIcon ? "py-1.5 pl-6 pr-1.5" : "px-6 py-2.5"} ${extra}`;
+/** Primary actions are 56px and everything else at least 48px. Full width on phones unless `fit`. */
+export function buttonClass({ variant = "primary", size, icon, fit }: Shape, extra = "") {
+  const resolved = size ?? (variant === "ghost" ? "md" : "lg");
+  return `${pressable} ${variants[variant]} ${sizes[resolved]} ${icon ? "py-1.5 pr-2 pl-6" : "px-6 py-2"} ${fit ? "" : "max-md:w-full"} ${extra}`;
 }
 
 function TrailingIcon({ children }: { children: ReactNode }) {
   return (
-    <span className="flex size-9 items-center justify-center rounded-full bg-white/15 transition duration-300 ease-settle group-hover:translate-x-0.5">
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/15 transition duration-300 ease-settle group-hover:translate-x-0.5">
       {children}
     </span>
   );
 }
 
-type ButtonProps = ComponentProps<"button"> & { variant?: Variant; icon?: ReactNode; busy?: boolean };
+type ButtonProps = ComponentProps<"button"> & Shape & { busy?: boolean };
 
-export function Button({ variant = "primary", icon, busy, className = "", children, disabled, type = "button", ...rest }: ButtonProps) {
+export function Button({ variant, size, icon, fit, busy, className = "", children, disabled, type = "button", ...rest }: ButtonProps) {
   return (
-    <button type={type} disabled={disabled || busy} aria-busy={busy} className={`group ${buttonClass(variant, Boolean(icon), className)}`} {...rest}>
+    <button type={type} disabled={disabled || busy} aria-busy={busy} className={buttonClass({ variant, size, icon, fit }, className)} {...rest}>
+      {busy && <CircleNotchIcon aria-hidden size={22} className="shrink-0 animate-spin" />}
       {children}
-      {icon && <TrailingIcon>{icon}</TrailingIcon>}
+      {icon && !busy && <TrailingIcon>{icon}</TrailingIcon>}
     </button>
   );
 }
 
-type LinkButtonProps = ComponentProps<typeof Link> & { variant?: Variant; icon?: ReactNode };
+type LinkButtonProps = ComponentProps<typeof Link> & Shape;
 
-export function LinkButton({ variant = "primary", icon, className = "", children, ...rest }: LinkButtonProps) {
+export function LinkButton({ variant, size, icon, fit, className = "", children, ...rest }: LinkButtonProps) {
   return (
-    <Link className={`group ${buttonClass(variant, Boolean(icon), className)}`} {...rest}>
+    <Link className={buttonClass({ variant, size, icon, fit }, className)} {...rest}>
       {children}
       {icon && <TrailingIcon>{icon}</TrailingIcon>}
     </Link>
@@ -52,16 +63,21 @@ export function LinkButton({ variant = "primary", icon, className = "", children
 /** Cream letter in a thin tray: the surface all family-facing content sits on. */
 export function Paper({ className = "", children, style }: { className?: string; children: ReactNode; style?: React.CSSProperties }) {
   return (
-    <div className={`rounded-[2rem] bg-white/8 p-1.5 ring-1 ring-white/12 ${className}`} style={style}>
-      <div className="paper h-full rounded-[calc(2rem-0.375rem)] bg-paper p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] sm:p-8">
+    <div className={`rounded-card bg-white/8 p-1.5 shadow-card ring-1 ring-white/12 ${className}`} style={style}>
+      <div className="paper h-full rounded-[calc(var(--radius-card)-0.375rem)] bg-paper p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] lg:p-8">
         {children}
       </div>
     </div>
   );
 }
 
+/** The quieter sibling of Paper, for things that support the page rather than lead it. */
+export function Panel({ className = "", children }: { className?: string; children: ReactNode }) {
+  return <div className={`rounded-card bg-pine-800/90 p-6 shadow-card ring-1 ring-white/20 ${className}`}>{children}</div>;
+}
+
 export const inputClass =
-  "min-h-12 w-full rounded-2xl border-0 bg-white/80 px-4 py-2.5 text-base text-ink ring-1 ring-ink/25 transition duration-200 ease-settle placeholder:text-ink-soft/80 focus:bg-white aria-invalid:ring-2 aria-invalid:ring-wax";
+  "min-h-tap-lg w-full rounded-field border-0 bg-white px-4 py-2 text-lg text-ink ring-2 ring-ink/45 transition duration-200 ease-settle placeholder:text-ink-soft/70 focus:ring-wax-deep aria-invalid:ring-wax";
 
 type FieldProps = {
   label: string;
@@ -75,7 +91,7 @@ export function Field({ label, helper, error, children }: FieldProps) {
   const noteId = `${id}-note`;
   return (
     <div className="grid gap-2">
-      <label htmlFor={id} className="text-sm font-semibold">
+      <label htmlFor={id} className="text-lg font-bold">
         {label}
       </label>
       {children({
@@ -84,13 +100,13 @@ export function Field({ label, helper, error, children }: FieldProps) {
         "aria-invalid": error ? true : undefined,
       })}
       {error ? (
-        <p id={noteId} className="flex items-start gap-1.5 text-sm font-medium text-wax">
-          <WarningCircleIcon aria-hidden className="mt-0.5 shrink-0" />
+        <p id={noteId} className="flex items-start gap-2 text-base font-bold text-wax-deep">
+          <WarningCircleIcon aria-hidden size={24} weight="fill" className="mt-0.5 shrink-0" />
           {error}
         </p>
       ) : (
         helper && (
-          <p id={noteId} className="text-sm text-ink-soft">
+          <p id={noteId} className="text-base text-ink-soft">
             {helper}
           </p>
         )
@@ -101,8 +117,8 @@ export function Field({ label, helper, error, children }: FieldProps) {
 
 export function ErrorNote({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <p role="alert" className={`flex items-start gap-2 rounded-2xl bg-[#f8e4dd] px-4 py-3 text-sm font-medium text-wax-deep ${className}`}>
-      <WarningCircleIcon aria-hidden className="mt-0.5 shrink-0" size={18} />
+    <p role="alert" className={`flex items-start gap-2 rounded-tile bg-[#f8e4dd] px-4 py-4 text-base font-bold text-wax-deep ${className}`}>
+      <WarningCircleIcon aria-hidden className="mt-0.5 shrink-0" size={24} weight="fill" />
       <span>{children}</span>
     </p>
   );
@@ -110,7 +126,7 @@ export function ErrorNote({ children, className = "" }: { children: ReactNode; c
 
 export function Skeleton({ className = "" }: { className?: string }) {
   return (
-    <div aria-hidden className={`relative overflow-hidden rounded-2xl bg-white/10 ${className}`}>
+    <div aria-hidden className={`relative overflow-hidden rounded-tile bg-white/10 ${className}`}>
       <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/15 to-transparent" />
     </div>
   );
@@ -126,9 +142,10 @@ type DialogProps = {
   dismissible?: boolean;
 };
 
-/** Native dialog: focus trapping and Escape come from the browser. */
+/** A bottom sheet on phones and a centered dialog above that. Native, so focus trapping and Escape are free. */
 export function Dialog({ open, title, onClose, children, footer, dismissible = true }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const t = useT();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -144,38 +161,56 @@ export function Dialog({ open, title, onClose, children, footer, dismissible = t
       onCancel={(event) => {
         if (!dismissible) event.preventDefault();
       }}
+      onClick={(event) => {
+        // The dialog has no padding of its own, so only a tap on the backdrop lands here.
+        if (dismissible && event.target === ref.current) onClose();
+      }}
       aria-label={title}
-      className="paper m-auto w-[calc(100%-2rem)] max-w-md rounded-[1.75rem] bg-paper p-6 text-ink backdrop:bg-pine-950/80 sm:p-8"
+      className="paper mx-0 mt-auto mb-0 max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-card bg-paper text-ink md:m-auto md:w-[calc(100%-4rem)] md:max-w-xl md:rounded-card"
     >
       {open && (
-        <>
+        <div className="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:p-8">
           <div className="flex items-start justify-between gap-4">
-            <h2 className="font-display text-2xl leading-tight font-semibold">{title}</h2>
+            <h2 className="font-display text-2xl font-semibold">{title}</h2>
             {dismissible && (
-              <button type="button" onClick={onClose} aria-label="Close" className="-mt-2 -mr-2 flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-ink/10">
-                <XIcon size={20} />
+              <button
+                type="button"
+                onClick={onClose}
+                className="-mt-2 -mr-2 flex min-h-tap shrink-0 items-center gap-2 rounded-full px-4 text-base font-bold ring-2 ring-ink/30 hover:bg-ink/10"
+              >
+                <XIcon aria-hidden size={20} />
+                {t("common.close")}
               </button>
             )}
           </div>
-          <div className="mt-3 grid gap-3 text-ink-soft">{children}</div>
-          {footer && <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">{footer}</div>}
-        </>
+          <div className="mt-4 grid gap-4 text-ink-soft">{children}</div>
+          {footer && <div className="mt-6 flex flex-col-reverse gap-4 md:flex-row md:justify-end">{footer}</div>}
+        </div>
       )}
     </dialog>
   );
 }
 
-export function PageShell({ children, slug, narrow }: { children: ReactNode; slug?: string; narrow?: boolean }) {
+type PageShellProps = {
+  children: ReactNode;
+  slug?: string;
+  narrow?: boolean;
+  /** For pages inside the phone frame, whose tabs already lead home. */
+  backOnWideOnly?: boolean;
+};
+
+export function PageShell({ children, slug, narrow, backOnWideOnly }: PageShellProps) {
+  const t = useT();
   return (
-    <div className={`mx-auto w-full px-4 pt-5 pb-16 sm:px-6 ${narrow ? "max-w-2xl" : "max-w-6xl"}`}>
-      <header className="mb-8 flex min-h-11 items-center justify-between">
+    <div className={`safe-top mx-auto w-full px-4 pb-16 sm:px-6 ${narrow ? "max-w-2xl" : "max-w-page"} ${backOnWideOnly ? "max-md:pt-4 max-md:pb-6" : ""}`}>
+      <header className={`mb-8 flex min-h-tap items-center justify-between ${backOnWideOnly ? "max-md:hidden" : ""}`}>
         {slug ? (
-          <Link href={`/x/${slug}`} className="-ml-2 flex min-h-11 items-center gap-2 rounded-full px-2 text-sm font-semibold text-gold">
-            <ArrowLeftIcon aria-hidden size={18} />
-            Back to the pool
+          <Link href={`/x/${slug}`} className="-ml-2 flex min-h-tap items-center gap-2 rounded-full px-2 text-lg font-bold text-gold">
+            <ArrowLeftIcon aria-hidden size={22} />
+            {t("common.backHome")}
           </Link>
         ) : (
-          <Link href="/" className="flex min-h-11 items-center font-display text-lg font-semibold text-gold">
+          <Link href="/" className="flex min-h-tap items-center font-display text-xl font-semibold text-gold">
             Santa&apos;s Sealed Envelopes
           </Link>
         )}

@@ -14,6 +14,48 @@ export function useNow(): number | null {
   return useSyncExternalStore(subscribeToSeconds, currentSecond, () => null);
 }
 
+/** Flips once at the moment, so a whole page needn't re-render every second to watch it. */
+export function useHasPassed(timestamp: number) {
+  return useSyncExternalStore(
+    subscribeToSeconds,
+    () => Date.now() >= timestamp,
+    () => false,
+  );
+}
+
+const deviceListeners = new Set<() => void>();
+const subscribeToDevice = (notify: () => void) => {
+  deviceListeners.add(notify);
+  return () => deviceListeners.delete(notify);
+};
+
+function readDeviceValue(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** A small note remembered on this device. Never put a code in here. */
+export function useDeviceValue(key: string) {
+  const value = useSyncExternalStore(
+    subscribeToDevice,
+    () => readDeviceValue(key),
+    () => null,
+  );
+  return [value, (next: string) => setDeviceValue(key, next)] as const;
+}
+
+export function setDeviceValue(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Without storage it's simply forgotten, and the app still works.
+  }
+  deviceListeners.forEach((notify) => notify());
+}
+
 /** Polls only while the tab is visible, which also lets the Neon compute sleep. */
 export function usePoll<T>(url: string, initial: T, intervalMs: number, onChange?: (previous: T, next: T) => void) {
   const [data, setData] = useState(initial);
