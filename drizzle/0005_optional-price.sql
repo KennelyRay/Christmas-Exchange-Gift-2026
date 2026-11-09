@@ -1,0 +1,1 @@
+ALTER TABLE "wishlist_items" ALTER COLUMN "price_centavos" DROP NOT NULL;

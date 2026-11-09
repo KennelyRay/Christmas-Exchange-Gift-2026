@@ -57,9 +57,11 @@ function itemErrorsOf(item: Draft, t: Translate) {
   const errors: Errors = {};
   if (!wishlistItemSchema.shape.name.safeParse(item.name).success) errors.name = t("err.itemName");
 
-  const centavos = parsePesoToCentavos(item.price);
-  if (centavos === null || centavos <= 0) errors.price = t("err.price");
-  else if (!wishlistItemSchema.shape.priceCentavos.safeParse(centavos).success) errors.price = t("err.priceHigh");
+  if (item.price.trim()) {
+    const centavos = parsePesoToCentavos(item.price);
+    if (centavos === null || centavos <= 0) errors.price = t("err.price");
+    else if (!wishlistItemSchema.shape.priceCentavos.safeParse(centavos).success) errors.price = t("err.priceHigh");
+  }
 
   if (item.url.trim() && !wishlistItemSchema.shape.url.safeParse(normalizeWebUrl(item.url)).success) errors.url = t("err.link");
   return errors;
@@ -471,7 +473,7 @@ export function WishlistForm({ slug, budgetCentavos, exchangeName }: Props) {
         lastName,
         items: items.map((item) => ({
           name: item.name,
-          priceCentavos: parsePesoToCentavos(item.price) ?? 0,
+          priceCentavos: parsePesoToCentavos(item.price),
           url: item.url.trim() ? normalizeWebUrl(item.url) : null,
           imageUrl: item.imageUrl,
         })),
@@ -679,9 +681,11 @@ export function WishlistForm({ slug, budgetCentavos, exchangeName }: Props) {
                   {t("wiz.list.add")}
                 </Button>
               )}
-              <p className="text-lg">
-                {t("wiz.list.total")}: <strong className="font-display text-2xl font-semibold text-gold tabular-nums">{formatPeso(total)}</strong>
-              </p>
+              {total > 0 && (
+                <p className="text-lg">
+                  {t("wiz.list.total")}: <strong className="font-display text-2xl font-semibold text-gold tabular-nums">{formatPeso(total)}</strong>
+                </p>
+              )}
             </>
           )}
 
@@ -706,9 +710,11 @@ export function WishlistForm({ slug, budgetCentavos, exchangeName }: Props) {
                     </li>
                   ))}
                 </ol>
-                <p className="mt-2 border-t-2 border-ink/15 pt-4 text-lg font-bold">
-                  {t("wiz.list.total")}: <span className="text-wax-deep tabular-nums">{formatPeso(total)}</span>
-                </p>
+                {total > 0 && (
+                  <p className="mt-2 border-t-2 border-ink/15 pt-4 text-lg font-bold">
+                    {t("wiz.list.total")}: <span className="text-wax-deep tabular-nums">{formatPeso(total)}</span>
+                  </p>
+                )}
                 <Button
                   variant="ghost"
                   onClick={() => {

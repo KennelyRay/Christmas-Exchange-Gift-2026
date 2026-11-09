@@ -87,7 +87,7 @@ export const wishlistItems = pgTable(
       .references(() => participants.id),
     position: integer("position").notNull(),
     name: text("name").notNull(),
-    priceCentavos: integer("price_centavos").notNull(),
+    priceCentavos: integer("price_centavos"),
     url: text("url"),
     imageUrl: text("image_url"),
     createdAt: createdAt(),

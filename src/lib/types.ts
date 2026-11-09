@@ -30,7 +30,7 @@ export type LobbyView = {
 
 export type EnvelopeItem = {
   name: string;
-  priceCentavos: number;
+  priceCentavos: number | null;
   url: string | null;
   imageUrl: string | null;
 };

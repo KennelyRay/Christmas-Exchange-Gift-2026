@@ -61,7 +61,7 @@ export async function submitWishlist(exchange: Exchange, input: WishlistSubmissi
           participantId: person.id,
           position,
           name: item.name,
-          priceCentavos: item.priceCentavos,
+          priceCentavos: item.priceCentavos ?? null,
           url: item.url ?? null,
           imageUrl: item.imageUrl ?? null,
         })),

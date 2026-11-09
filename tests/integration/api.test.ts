@@ -189,8 +189,22 @@ describe("wishlist submission and locking", () => {
 
     expect((await submit([])).status).toBe(422);
     expect((await submit([{ name: "Bag", priceCentavos: -5 }])).status).toBe(422);
+    expect((await submit([{ name: "Bag", priceCentavos: 0 }])).status).toBe(422);
     expect((await submit([{ name: "Bag", priceCentavos: 100, url: "javascript:alert(1)" }])).status).toBe(422);
     expect((await submit([{ name: "Bag", priceCentavos: 100, imageUrl: "https://evil.example/x.png" }])).status).toBe(422);
+  });
+
+  it("saves an item with no price as empty, whether it's left out or sent as null", async () => {
+    const { slug } = await createExchange();
+    const response = await call(participantsRoutes.POST, { slug }, {
+      body: { firstName: "Eli", lastName: "Cruz", items: [{ name: "Bag" }, { name: "Mug", priceCentavos: null }, item("Scarf", 500)] },
+    });
+    expect(response.status).toBe(201);
+
+    const { participantId } = await body<{ participantId: string }>(response);
+    const saved = await db.select().from(schema.wishlistItems).where(eq(schema.wishlistItems.participantId, participantId));
+    const priceOf = (name: string) => saved.find((row) => row.name === name)?.priceCentavos;
+    expect([priceOf("Bag"), priceOf("Mug"), priceOf("Scarf")]).toEqual([null, null, 500]);
   });
 
   it("offers no route to change a submitted wishlist", () => {

@@ -33,7 +33,7 @@ export const createExchangeSchema = z.object({
 
 export const wishlistItemSchema = z.object({
   name: plainText("Item name", 120),
-  priceCentavos: centavos,
+  priceCentavos: centavos.nullable().optional(),
   url: webUrl.nullable().optional(),
   imageUrl: z.string().url().max(2048).nullable().optional(),
 });

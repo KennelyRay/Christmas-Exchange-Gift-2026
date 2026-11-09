@@ -236,7 +236,7 @@ function Reveal({ envelope, onClose }: { envelope: Ready; onClose: () => void })
                 )}
                 <div className="grid min-w-0 flex-1 content-start gap-2">
                   <h3 className="font-display text-3xl font-semibold wrap-anywhere">{item.name}</h3>
-                  <p className="text-xl font-bold text-wax-deep tabular-nums">{formatPeso(item.priceCentavos)}</p>
+                  {item.priceCentavos !== null && <p className="text-xl font-bold text-wax-deep tabular-nums">{formatPeso(item.priceCentavos)}</p>}
                   {item.url && (
                     <div className="mt-2">
                       <StoreLink url={item.url} />

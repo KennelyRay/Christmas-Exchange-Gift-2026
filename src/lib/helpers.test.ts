@@ -58,6 +58,13 @@ describe("store links", () => {
     expect(normalizeWebUrl("javascript:alert(1)")).toBe("javascript:alert(1)");
   });
 
+  it("lets an item have no price, but never a zero or negative one", () => {
+    expect(wishlistItemSchema.safeParse({ name: "A" }).success).toBe(true);
+    expect(wishlistItemSchema.safeParse({ name: "A", priceCentavos: null }).success).toBe(true);
+    expect(wishlistItemSchema.safeParse({ name: "A", priceCentavos: 0 }).success).toBe(false);
+    expect(wishlistItemSchema.safeParse({ name: "A", priceCentavos: -1 }).success).toBe(false);
+  });
+
   it("validates optional links on items", () => {
     expect(wishlistItemSchema.safeParse({ name: "A", priceCentavos: 1, url: null }).success).toBe(true);
     expect(wishlistItemSchema.safeParse({ name: "A", priceCentavos: 1, url: "ftp://x.y" }).success).toBe(false);
