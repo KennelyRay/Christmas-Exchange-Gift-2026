@@ -12,7 +12,7 @@ export default async function EnvelopePage({ params }: PageProps<"/x/[slug]/enve
   const { participants } = await getLobby(exchange);
 
   return (
-    <EnvelopeFrame slug={slug} name={exchange.name} revealAt={exchange.revealAt.toISOString()}>
+    <EnvelopeFrame slug={slug}>
       <PageShell slug={slug} narrow backOnWideOnly>
         <EnvelopeClient slug={slug} participants={participants} />
       </PageShell>

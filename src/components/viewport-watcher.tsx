@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { htmlLang, useLocale } from "@/lib/i18n";
 
-/** At 24px a rem is 150% of normal, the point where pinned bars start crowding the page. */
+/** At 24px a rem is 150% of normal, the point where tabs and bars need a roomier layout. */
 const BIG_TEXT_PX = 24;
 /** No browser bar is this tall, so a drop this size can only be the on-screen keyboard. */
 const KEYBOARD_MIN_PX = 150;
@@ -40,9 +40,11 @@ export function ViewportWatcher() {
       // is pressed, and moving the page mid-press makes the browser drop the tap.
       root.toggleAttribute("data-keyboard-open", !zoomed && fullHeight - height > KEYBOARD_MIN_PX);
 
-      if (viewport) {
-        const covered = zoomed ? 0 : Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-        root.style.setProperty("--keyboard-offset", `${Math.round(covered)}px`);
+      // The phone screens are sized to what's actually visible. On an iPhone that
+      // shrinks with the keyboard, which is what keeps the pinned button above it.
+      if (viewport && !zoomed) {
+        root.style.setProperty("--app-height", `${Math.round(viewport.height)}px`);
+        root.style.setProperty("--app-top", `${Math.round(viewport.offsetTop)}px`);
       }
     };
 

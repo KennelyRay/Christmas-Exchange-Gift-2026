@@ -1,6 +1,16 @@
 import { normalizeNamePart } from "./names";
 import type { LobbyView, PublicAuditEntry, PublicParticipant } from "./types";
 
+export type LobbyModel = {
+  lobby: LobbyView;
+  stage: Stage;
+  mainAction: MainAction | null;
+  joinedName: string | null;
+  joinTimes: ReadonlyMap<string, string>;
+  christmas: Date;
+  stale: boolean;
+};
+
 export type Stage = 1 | 2 | 3 | 4;
 export type MainAction = "add" | "share" | "envelope" | "chain";
 

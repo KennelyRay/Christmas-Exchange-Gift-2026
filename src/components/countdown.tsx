@@ -15,11 +15,11 @@ const UNITS: ReadonlyArray<[keyof ReturnType<typeof timeParts>, MessageKey]> = [
 
 const MS_PER_DAY = 86_400_000;
 
-function Tiles({ parts, numberClass }: { parts: ReturnType<typeof timeParts> | null; numberClass: string }) {
+function Tiles({ parts, numberClass, units = UNITS }: { parts: ReturnType<typeof timeParts> | null; numberClass: string; units?: typeof UNITS }) {
   const t = useT();
   return (
     <dl role="timer" className="grid grid-cols-[repeat(auto-fit,minmax(min(4rem,100%),1fr))] gap-2">
-      {UNITS.map(([unit, label]) => (
+      {units.map(([unit, label]) => (
         <div key={unit} className="flex flex-col-reverse items-center rounded-tile bg-pine-950/70 py-2 text-center">
           <dt className="text-sm font-semibold wrap-normal text-snow">{t(label)}</dt>
           <dd className={`font-display font-semibold tabular-nums text-gold ${numberClass}`}>{parts ? String(parts[unit]).padStart(2, "0") : "--"}</dd>
@@ -54,6 +54,17 @@ export function CountdownCard({ target, revealAt }: { target: Date; revealAt: st
       </div>
     </section>
   );
+}
+
+/** Days, hours and minutes in big numbers, for the phone's Home screen. */
+export function CountdownBig({ target }: { target: Date }) {
+  const now = useNow();
+  const t = useT();
+
+  if (now !== null && target.getTime() <= now) {
+    return <p className="font-display text-3xl font-semibold text-gold">{t("count.done")}</p>;
+  }
+  return <Tiles parts={now === null ? null : timeParts(target.getTime() - now)} numberClass="text-5xl [@media(max-height:42rem)]:text-4xl" units={UNITS.slice(0, 3)} />;
 }
 
 function chipLabel(remainingMs: number, t: ReturnType<typeof useT>) {

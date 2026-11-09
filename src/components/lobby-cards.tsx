@@ -86,7 +86,7 @@ function auditText(entry: PublicAuditEntry, t: Translate) {
   return entry.detail;
 }
 
-function AuditList({ entries }: { entries: readonly PublicAuditEntry[] }) {
+export function AuditList({ entries }: { entries: readonly PublicAuditEntry[] }) {
   const t = useT();
   return (
     <ol className="divide-y-2 divide-ink/10">
@@ -153,7 +153,7 @@ export function SealedCard({ lobby }: { lobby: LobbyView }) {
   );
 }
 
-const CONTACT_URL = process.env.NEXT_PUBLIC_ORGANIZER_CONTACT_URL;
+export const CONTACT_URL = process.env.NEXT_PUBLIC_ORGANIZER_CONTACT_URL;
 
 const FAQS: ReadonlyArray<[MessageKey, MessageKey]> = [
   ["faq.what", "faq.what.a"],

@@ -194,25 +194,23 @@ dialog[open] {
   --spacing: 0.125rem;
 }
 
+
 /*
- * The dock holds real layout space (sticky, not fixed), so content is never hidden
- * behind it and nothing shifts while it loads. --keyboard-offset is only non-zero
- * where the on-screen keyboard covers the page instead of resizing it (iPhones).
+ * A phone screen: exactly the visible area, with its own inner scrolling, so the
+ * page behind it never moves and the bars at top and bottom stay put.
  */
+@utility app-screen {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--app-top, 0px);
+  height: var(--app-height, 100dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 @layer components {
-  .dock {
-    position: sticky;
-    bottom: 0;
-    z-index: 20;
-    transform: translateY(calc(var(--keyboard-offset, 0px) * -1));
-  }
-
-  /* Very large text: stop pinning bars, or they would fill the screen. */
-  [data-big-text] .dock {
-    position: static;
-    transform: none;
-  }
-
   /* Typing needs the room, and the tabs are not useful with the keyboard up. */
   [data-keyboard-open] .tab-bar {
     display: none;

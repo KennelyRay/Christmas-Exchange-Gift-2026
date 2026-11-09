@@ -25,7 +25,7 @@ const FADE_MS = 300;
 
 type Ready = Extract<EnvelopeView, { state: "ready" }>;
 
-function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
+export function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
   const t = useT();
   const [taps, setTaps] = useState(0);
   const [opening, setOpening] = useState(false);
@@ -52,7 +52,7 @@ function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="grid justify-items-center gap-6">
       <motion.div
-        className="relative aspect-[7/5] w-full max-w-sm [perspective:1000px]"
+        className="relative aspect-[7/5] w-full max-w-sm [perspective:1000px] max-md:w-[min(100%,39dvh)]"
         animate={{ opacity: opening && reducedMotion ? 0 : 1 }}
         transition={{ duration: FADE_MS / 1000 }}
       >

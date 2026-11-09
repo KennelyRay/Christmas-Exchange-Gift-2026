@@ -1,8 +1,7 @@
 "use client";
 
-import { EnvelopeSimpleIcon, GiftIcon, MagnifyingGlassIcon, TelevisionIcon } from "@phosphor-icons/react";
+import { EnvelopeSimpleIcon, GiftIcon, TelevisionIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
-import { useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { burst } from "@/lib/celebrate";
 import { nextChristmas } from "@/lib/christmas";
@@ -10,27 +9,15 @@ import { useDeviceValue, useHasPassed, usePoll } from "@/lib/hooks";
 import { useT } from "@/lib/i18n";
 import { formatPeso } from "@/lib/money";
 import type { MessageKey } from "@/lib/messages";
-import { normalizeNamePart } from "@/lib/names";
-import { isStillJoined, joinedNameKey, joinTimesFrom, mainActionOf, stageOf, type MainAction, type Stage } from "@/lib/stage";
+import { isStillJoined, joinedNameKey, joinTimesFrom, mainActionOf, stageOf, type LobbyModel, type MainAction } from "@/lib/stage";
 import type { LobbyView } from "@/lib/types";
 import { CountdownCard } from "./countdown";
-import { ActivityCard, EmptyJoined, Faq, HowItWorksCard, InstallTip, LanguageToggle, OrganizerCard, SealedCard } from "./lobby-cards";
-import { Dock, TabBar, tabHref, TopBar, type Tab } from "./mobile-shell";
+import { ActivityCard, EmptyJoined, Faq, HowItWorksCard, LanguageToggle, OrganizerCard, SealedCard } from "./lobby-cards";
+import { MobileLobby } from "./mobile-lobby";
 import { FamilyList } from "./people";
 import { ShareButton } from "./share";
 import { Stepper } from "./stepper";
-import { ErrorNote, inputClass, LinkButton, Panel, Paper } from "./ui";
-
-/** Everything the two layouts share, worked out once. */
-type LobbyModel = {
-  lobby: LobbyView;
-  stage: Stage;
-  mainAction: MainAction | null;
-  joinedName: string | null;
-  joinTimes: ReadonlyMap<string, string>;
-  christmas: Date;
-  stale: boolean;
-};
+import { ErrorNote, LinkButton, Paper } from "./ui";
 
 function stageMessage({ stage, joinedName }: LobbyModel): [MessageKey, Record<string, string>?] {
   if (stage === 1) return joinedName ? ["stage.openJoined", { name: joinedName }] : ["stage.open"];
@@ -126,97 +113,6 @@ function DrawWarning({ message }: { message: string | null }) {
   return message ? <ErrorNote className="mt-6">{message}</ErrorNote> : null;
 }
 
-/* ------------------------------ Phone (under 768px) ------------------------------ */
-
-function MobileHome({ model }: { model: LobbyModel }) {
-  const t = useT();
-  const { lobby, stage, christmas } = model;
-  return (
-    <div className="grid gap-4">
-      <header className="rise">
-        <h1 className="mb-2 font-display text-3xl font-semibold wrap-anywhere">{lobby.name}</h1>
-        <StageIntro model={model} />
-      </header>
-      <StaleNote show={model.stale} />
-      <CountdownCard target={christmas} revealAt={lobby.revealAt} />
-      <Panel>
-        <h2 className="mb-4 font-display text-2xl font-semibold">{t("stage.whereWeAre")}</h2>
-        <Stepper current={stage} direction="column" />
-      </Panel>
-      <div className="grid gap-2">
-        <SecondaryActions model={model} />
-      </div>
-      <HowItWorksCard />
-      <InstallTip />
-    </div>
-  );
-}
-
-function MobileJoined({ model }: { model: LobbyModel }) {
-  const t = useT();
-  const [query, setQuery] = useState("");
-  const { lobby, joinTimes } = model;
-  const count = lobby.participants.length;
-  const search = normalizeNamePart(query);
-  const shown = search ? lobby.participants.filter((person) => normalizeNamePart(person.name).includes(search)) : lobby.participants;
-
-  return (
-    <Paper>
-      <JoinedHeading count={count} />
-      {count === 0 ? (
-        <div className="mt-6">
-          <EmptyJoined slug={lobby.slug} name={lobby.name} canJoin={lobby.status === "open"} />
-        </div>
-      ) : (
-        <>
-          <label htmlFor="joined-search" className="mt-6 mb-2 block text-lg font-bold">
-            {t("joined.search")}
-          </label>
-          <div className="relative mb-6">
-            <MagnifyingGlassIcon aria-hidden size={24} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-ink-soft" />
-            <input id="joined-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" className={`${inputClass} pl-12`} />
-          </div>
-          {shown.length > 0 ? <FamilyList people={shown} joinTimes={joinTimes} layout="rows" /> : <p className="text-lg font-bold">{t("joined.noMatch")}</p>}
-        </>
-      )}
-      <DrawWarning message={lobby.drawWarning} />
-    </Paper>
-  );
-}
-
-function MobileHelp({ model }: { model: LobbyModel }) {
-  const t = useT();
-  const { lobby } = model;
-  return (
-    <div className="grid gap-4">
-      <h1 className="font-display text-4xl font-semibold">{t("nav.help")}</h1>
-      <Faq revealAt={lobby.revealAt} />
-      <Panel>
-        <h2 className="mb-4 font-display text-2xl font-semibold">{t("common.language")}</h2>
-        <LanguageToggle />
-      </Panel>
-      <ActivityCard audit={lobby.audit} />
-      {lobby.commitmentHash && <SealedCard lobby={lobby} />}
-      <OrganizerCard slug={lobby.slug} />
-    </div>
-  );
-}
-
-function MobileLobby({ model, tab, onSelect }: { model: LobbyModel; tab: Tab; onSelect: (tab: Tab) => void }) {
-  const { lobby, mainAction } = model;
-  return (
-    <div className="flex min-h-[100dvh] flex-col md:hidden">
-      <TopBar name={lobby.name} revealAt={lobby.revealAt} />
-      <main className="safe-x flex-1 py-4">
-        {tab === "joined" ? <MobileJoined model={model} /> : tab === "help" ? <MobileHelp model={model} /> : <MobileHome model={model} />}
-      </main>
-      <Dock action={tab === "home" && mainAction ? <MainActionButton action={mainAction} lobby={lobby} /> : undefined}>
-        <TabBar slug={lobby.slug} active={tab} onSelect={onSelect} />
-      </Dock>
-    </div>
-  );
-}
-
 /* ----------------------------- Tablet and computer ----------------------------- */
 
 function Hero({ model }: { model: LobbyModel }) {
@@ -292,14 +188,9 @@ function DesktopLobby({ model }: { model: LobbyModel }) {
 
 /* ---------------------------------- The lobby ---------------------------------- */
 
-function currentTab(value: string | null): Tab {
-  return value === "joined" || value === "help" ? value : "home";
-}
-
 export function Lobby({ initial }: { initial: LobbyView }) {
   const t = useT();
   const [justJoined, setJustJoined] = useState<string | null>(null);
-  const tab = currentTab(useSearchParams().get("tab"));
 
   const { data: lobby, stale } = usePoll<LobbyView>(`/api/exchanges/${initial.slug}`, initial, 4000, (previous, next) => {
     const known = new Set(previous.participants.map((p) => p.id));
@@ -326,15 +217,9 @@ export function Lobby({ initial }: { initial: LobbyView }) {
     stale,
   };
 
-  function selectTab(next: Tab) {
-    // Tabs share one page's data, so switching needs no trip to the server.
-    window.history.pushState(null, "", tabHref(lobby.slug, next));
-    window.scrollTo({ top: 0 });
-  }
-
   return (
     <MotionConfig reducedMotion="user">
-      <MobileLobby model={model} tab={tab} onSelect={selectTab} />
+      <MobileLobby model={model} />
       <DesktopLobby model={model} />
 
       <p aria-live="polite" className="sr-only">

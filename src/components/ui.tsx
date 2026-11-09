@@ -2,7 +2,8 @@
 
 import { ArrowLeftIcon, CircleNotchIcon, WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useEffect, useId, useRef, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ComponentProps, type PointerEvent, type ReactNode } from "react";
+import { useBackToClose } from "@/lib/app-history";
 import { useT } from "@/lib/i18n";
 
 const pressable =
@@ -132,6 +133,8 @@ export function Skeleton({ className = "" }: { className?: string }) {
   );
 }
 
+const DRAG_TO_CLOSE_PX = 80;
+
 type DialogProps = {
   open: boolean;
   title: string;
@@ -145,6 +148,7 @@ type DialogProps = {
 /** A bottom sheet on phones and a centered dialog above that. Native, so focus trapping and Escape are free. */
 export function Dialog({ open, title, onClose, children, footer, dismissible = true }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const dragStart = useRef<number | null>(null);
   const t = useT();
 
   useEffect(() => {
@@ -153,6 +157,17 @@ export function Dialog({ open, title, onClose, children, footer, dismissible = t
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
+
+  useBackToClose(open && dismissible, onClose);
+
+  const dragDistance = (event: PointerEvent) => Math.max(0, event.clientY - (dragStart.current ?? event.clientY));
+
+  function endDrag(event: PointerEvent) {
+    const distance = dragDistance(event);
+    dragStart.current = null;
+    if (ref.current) ref.current.style.transform = "";
+    if (distance > DRAG_TO_CLOSE_PX) onClose();
+  }
 
   return (
     <dialog
@@ -169,8 +184,25 @@ export function Dialog({ open, title, onClose, children, footer, dismissible = t
       className="paper mx-0 mt-auto mb-0 max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-card bg-paper text-ink md:m-auto md:w-[calc(100%-4rem)] md:max-w-xl md:rounded-card"
     >
       {open && (
-        <div className="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:p-8">
-          <div className="flex items-start justify-between gap-4">
+        <div className="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:pt-0 md:p-8">
+          {dismissible && (
+            <div
+              aria-hidden
+              className="-mx-6 flex h-8 touch-none cursor-grab items-center justify-center md:hidden"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                dragStart.current = event.clientY;
+              }}
+              onPointerMove={(event) => {
+                if (dragStart.current !== null && ref.current) ref.current.style.transform = `translateY(${dragDistance(event)}px)`;
+              }}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            >
+              <span className="h-2 w-16 rounded-full bg-ink/40" />
+            </div>
+          )}
+          <div className="flex items-start justify-between gap-4 max-md:mt-2">
             <h2 className="font-display text-2xl font-semibold">{title}</h2>
             {dismissible && (
               <button
