@@ -7,9 +7,9 @@ type Flake = { x: number; y: number; radius: number; speed: number; sway: number
 const PHONE_WIDTH = 768;
 const FRAME_MS_ON_PHONE = 1000 / 30;
 
-/** Cheap phones get few, slow, faint flakes on a 1x canvas at half the frames. */
+/** Cheap phones get fewer flakes, a 1x canvas, and half the frames. */
 function flakeCount(width: number) {
-  return width < PHONE_WIDTH ? Math.round(Math.min(14, width / 28)) : Math.round(Math.min(90, width / 14));
+  return width < PHONE_WIDTH ? Math.round(Math.min(24, width / 16)) : Math.round(Math.min(90, width / 14));
 }
 
 export function Snowfall() {
@@ -43,7 +43,7 @@ export function Snowfall() {
         x: Math.random() * width,
         y: Math.random() * height,
         radius: 0.8 + Math.random() * 2.2,
-        speed: (0.25 + Math.random() * 0.8) * (width < PHONE_WIDTH ? 0.55 : 1),
+        speed: 0.25 + Math.random() * 0.8,
         sway: 0.2 + Math.random() * 0.6,
         phase: Math.random() * Math.PI * 2,
       }));
@@ -58,7 +58,7 @@ export function Snowfall() {
       lastDrawn = time;
 
       context.clearRect(0, 0, width, height);
-      context.fillStyle = `rgba(247, 243, 234, ${width < PHONE_WIDTH ? 0.42 : 0.6})`;
+      context.fillStyle = "rgba(247, 243, 234, 0.6)";
       context.beginPath();
       for (const flake of flakes) {
         flake.y += flake.speed * steps;

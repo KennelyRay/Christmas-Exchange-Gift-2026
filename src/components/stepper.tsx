@@ -25,7 +25,7 @@ export function Stepper({ current, direction }: { current: Stage; direction: "ro
 
         return (
           <li key={n} aria-current={state === "now" ? "step" : undefined} className={`flex min-w-0 items-start gap-4 rounded-tile p-4 ring-1 [[data-big-text]_&]:flex-col ${surface}`}>
-            <span aria-hidden className={`flex size-10 shrink-0 items-center justify-center rounded-full font-display text-xl font-semibold ${badge}`}>
+            <span aria-hidden className={`flex size-10 shrink-0 items-center justify-center rounded-full font-display text-xl font-semibold max-md:size-8 max-md:text-base ${badge}`}>
               {state === "done" ? <CheckIcon size={22} weight="bold" /> : n}
             </span>
             <div className="min-w-0">

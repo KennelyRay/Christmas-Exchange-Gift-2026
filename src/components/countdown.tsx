@@ -1,5 +1,6 @@
 "use client";
 
+import { TreeEvergreenIcon } from "@phosphor-icons/react";
 import { formatManila, timeParts } from "@/lib/christmas";
 import { useNow } from "@/lib/hooks";
 import { useT } from "@/lib/i18n";
@@ -12,11 +13,13 @@ const UNITS: ReadonlyArray<[keyof ReturnType<typeof timeParts>, MessageKey]> = [
   ["seconds", "count.seconds"],
 ];
 
-function Tiles({ parts, numberClass }: { parts: ReturnType<typeof timeParts> | null; numberClass: string }) {
+const MS_PER_DAY = 86_400_000;
+
+function Tiles({ parts, numberClass, units = UNITS }: { parts: ReturnType<typeof timeParts> | null; numberClass: string; units?: typeof UNITS }) {
   const t = useT();
   return (
     <dl role="timer" className="grid grid-cols-[repeat(auto-fit,minmax(min(4rem,100%),1fr))] gap-2">
-      {UNITS.map(([unit, label]) => (
+      {units.map(([unit, label]) => (
         <div key={unit} className="flex flex-col-reverse items-center rounded-tile bg-pine-950/70 py-2 text-center">
           <dt className="text-sm font-semibold wrap-normal text-snow">{t(label)}</dt>
           <dd className={`font-display font-semibold tabular-nums text-gold ${numberClass}`}>{parts ? String(parts[unit]).padStart(2, "0") : "--"}</dd>
@@ -53,28 +56,35 @@ export function CountdownCard({ target, revealAt }: { target: Date; revealAt: st
   );
 }
 
-/** One big number: days, then hours on the last day, then minutes in the last hour. */
-export function CountdownFocal({ target }: { target: Date }) {
+/** Days, hours and minutes in big numbers, for the phone's Home screen. */
+export function CountdownBig({ target }: { target: Date }) {
   const now = useNow();
   const t = useT();
 
   if (now !== null && target.getTime() <= now) {
-    return <p className="font-display text-5xl font-semibold text-gold">{t("count.done")}</p>;
+    return <p className="font-display text-3xl font-semibold text-gold">{t("count.done")}</p>;
   }
+  return <Tiles parts={now === null ? null : timeParts(target.getTime() - now)} numberClass="text-5xl" units={UNITS.slice(0, 3)} />;
+}
 
-  const parts = now === null ? null : timeParts(target.getTime() - now);
-  let value: number | string = "--";
-  let label: MessageKey = "home.days";
-  if (parts) {
-    if (parts.days > 0) [value, label] = [parts.days, parts.days === 1 ? "home.day" : "home.days"];
-    else if (parts.hours > 0) [value, label] = [parts.hours, parts.hours === 1 ? "home.hour" : "home.hours"];
-    else [value, label] = [parts.minutes, parts.minutes === 1 ? "home.minute" : "home.minutes"];
-  }
+function chipLabel(remainingMs: number, t: ReturnType<typeof useT>) {
+  if (remainingMs <= 0) return t("count.chipToday");
+  // Rounded down, so it always agrees with the Days tile on the same screen.
+  const days = Math.floor(remainingMs / MS_PER_DAY);
+  if (days === 0) return t("count.chip0");
+  return days === 1 ? t("count.chip1") : t("count.chip", { n: days });
+}
+
+/** Compact "45 days to go" for the phone's top bar. */
+export function CountdownChip({ target }: { target: Date }) {
+  const now = useNow();
+  const t = useT();
+  const label = now === null ? " " : chipLabel(target.getTime() - now, t);
 
   return (
-    <div role="timer">
-      <p className="font-display text-[clamp(5rem,32vw,8rem)] leading-none font-semibold text-gold tabular-nums">{value}</p>
-      <p className="mt-2 text-base">{t(label)}</p>
-    </div>
+    <p className="flex shrink-0 items-center gap-1 rounded-full bg-pine-950/70 px-4 py-1 text-sm font-bold tabular-nums text-gold ring-1 ring-gold/40">
+      <TreeEvergreenIcon aria-hidden size={18} weight="fill" className="shrink-0" />
+      {label}
+    </p>
   );
 }

@@ -21,14 +21,12 @@ type SecretCodeProps = {
   exchangeName?: string;
   sendLabel?: string;
   sendText?: string;
-  /** Sits straight on the dark background, with the code as the one thing that stands out. */
-  plain?: boolean;
 };
 
 type Picture = { blob: Blob; dataUrl: string };
 
 /** Shown exactly once. The server keeps only a hash, so leaving is guarded. */
-export function SecretCode({ label, code, explanation, confirmLabel, onDone, doneLabel, ownerName, exchangeName, sendLabel, sendText, plain }: SecretCodeProps) {
+export function SecretCode({ label, code, explanation, confirmLabel, onDone, doneLabel, ownerName, exchangeName, sendLabel, sendText }: SecretCodeProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -85,78 +83,12 @@ export function SecretCode({ label, code, explanation, confirmLabel, onDone, don
     }
   }
 
-  const pictureSheet = (
-    <Dialog open={picture !== null} title={t("code.pictureTitle")} onClose={() => setPicture(null)}>
-      {picture && (
-        <>
-          {/* A data URL so that press-and-hold saving works, including in Messenger's browser. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={picture.dataUrl} alt={`${label}: ${shown}`} className="mx-auto w-full max-w-xs rounded-tile" />
-          <p className="text-lg max-md:text-base">{t("code.pictureHold")}</p>
-          <Button onClick={() => void downloadPicture()} className="w-full">
-            <DownloadSimpleIcon aria-hidden size={24} className="shrink-0" />
-            {t("code.pictureSave")}
-          </Button>
-          {pictureSaved && (
-            <p role="status" className="flex items-center gap-2 text-lg font-bold text-ink max-md:text-base max-md:font-semibold">
-              <CheckCircleIcon aria-hidden size={28} weight="fill" className="shrink-0 text-pine-700" />
-              {t("code.pictureSaved")}
-            </p>
-          )}
-        </>
-      )}
-    </Dialog>
-  );
-
-  if (plain) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain">
-          <div>
-            <p className="sr-only">{label}</p>
-            <p className={`font-display font-semibold text-gold ${isNumeric ? "text-[clamp(3.25rem,16vw,5rem)] leading-none tracking-wide whitespace-nowrap tabular-nums" : "text-3xl wrap-anywhere"}`}>{shown}</p>
-            <p className="mt-4 text-base">{explanation}</p>
-          </div>
-
-          <div className="grid gap-2">
-            <Button variant="ghost" size="lg" busy={drawing} onClick={() => void makePicture()} className="w-full">
-              {drawing ? t("code.pictureBusy") : t("code.picture")}
-            </Button>
-            <div className="flex flex-wrap gap-x-6">
-              <Button variant="text" fit onClick={() => void copy()}>
-                <span aria-live="polite">{copied ? t("code.copied") : t("code.copy")}</span>
-              </Button>
-              <Button variant="text" fit onClick={() => void send()}>
-                {sendLabel ?? t("code.send")}
-              </Button>
-            </div>
-            {note && (
-              <p role="status" className="text-base">
-                {note}
-              </p>
-            )}
-          </div>
-
-          <label className="flex min-h-tap cursor-pointer items-center gap-4 text-base font-semibold">
-            <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} className="size-7 shrink-0 accent-[#a3262b]" />
-            {confirmLabel}
-          </label>
-        </div>
-
-        <Button onClick={onDone} disabled={!saved} className="mt-4 w-full shrink-0">
-          {doneLabel}
-        </Button>
-        {pictureSheet}
-      </div>
-    );
-  }
-
   return (
-    <div className="grid gap-6">
-      <div className="rounded-tile border-2 border-dashed border-gold-deep bg-gold/40 p-6 text-center">
+    <div className="grid gap-6 max-md:gap-3">
+      <div className="rounded-tile border-2 border-dashed border-gold-deep bg-gold/40 p-6 text-center max-md:p-4">
         <p className="text-lg font-bold">{label}</p>
         <p
-          className={`mt-2 font-display font-semibold ${isNumeric ? "text-[clamp(3.25rem,16vw,5.5rem)] leading-none tracking-wide whitespace-nowrap tabular-nums" : "text-3xl wrap-anywhere"}`}
+          className={`mt-2 font-display font-semibold ${isNumeric ? "text-[clamp(3.25rem,16vw,5.5rem)] max-md:text-[clamp(2.75rem,13vw,4rem)] leading-none tracking-wide whitespace-nowrap tabular-nums" : "text-3xl wrap-anywhere"}`}
         >
           {shown}
         </p>
@@ -186,7 +118,7 @@ export function SecretCode({ label, code, explanation, confirmLabel, onDone, don
       </div>
 
       <label className="flex min-h-tap-lg cursor-pointer items-center gap-4 rounded-tile bg-paper-deep/70 p-4 text-lg font-bold">
-        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} className="size-8 shrink-0 accent-[#a3262b]" />
+        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} className="size-8 shrink-0 accent-[#a3262b] max-md:size-6" />
         {confirmLabel}
       </label>
 
@@ -197,7 +129,26 @@ export function SecretCode({ label, code, explanation, confirmLabel, onDone, don
         {!saved && <p className="text-center text-base text-ink-soft">{t("code.confirmFirst")}</p>}
       </div>
 
-      {pictureSheet}
+      <Dialog open={picture !== null} title={t("code.pictureTitle")} onClose={() => setPicture(null)}>
+        {picture && (
+          <>
+            {/* A data URL so that press-and-hold saving works, including in Messenger's browser. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={picture.dataUrl} alt={`${label}: ${shown}`} className="mx-auto w-full max-w-xs rounded-tile" />
+            <p className="text-lg">{t("code.pictureHold")}</p>
+            <Button onClick={() => void downloadPicture()} className="w-full">
+              <DownloadSimpleIcon aria-hidden size={24} className="shrink-0" />
+              {t("code.pictureSave")}
+            </Button>
+            {pictureSaved && (
+              <p role="status" className="flex items-center gap-2 text-lg font-bold text-ink">
+                <CheckCircleIcon aria-hidden size={28} weight="fill" className="shrink-0 text-pine-700" />
+                {t("code.pictureSaved")}
+              </p>
+            )}
+          </>
+        )}
+      </Dialog>
     </div>
   );
 }

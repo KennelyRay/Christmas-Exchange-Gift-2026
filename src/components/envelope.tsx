@@ -50,9 +50,9 @@ export function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
   const settle = { duration: 0.9, ease: [0.32, 0.72, 0, 1] as const };
 
   return (
-    <div className="grid justify-items-center gap-6 max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col max-md:items-center">
+    <div className="grid justify-items-center gap-6 max-md:gap-3">
       <motion.div
-        className="relative aspect-[7/5] w-full max-w-sm [perspective:1000px] max-md:my-auto max-md:w-[min(100%,39dvh)] max-md:drop-shadow-[0_0_36px_rgba(224,187,107,0.28)]"
+        className="relative aspect-[7/5] w-full max-w-sm [perspective:1000px] max-md:w-[min(100%,30dvh)]"
         animate={{ opacity: opening && reducedMotion ? 0 : 1 }}
         transition={{ duration: FADE_MS / 1000 }}
       >
@@ -87,7 +87,7 @@ export function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
             animate={{ rotate: taps * 11 }}
             whileTap={{ scale: 0.92 }}
             transition={{ type: "spring", stiffness: 400, damping: 12 }}
-            className="absolute top-[60%] left-1/2 z-[3] -mt-14 -ml-14 size-28 touch-none rounded-full"
+            className="absolute top-[60%] left-1/2 z-[3] -mt-14 -ml-14 size-28 touch-none rounded-full max-md:-mt-10 max-md:-ml-10 max-md:size-20"
           >
             <WaxSeal className="size-full" cracks={taps} />
           </motion.button>
@@ -101,10 +101,10 @@ export function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
       ) : (
         <>
           <Button onClick={open} className="w-full">
-            <EnvelopeOpenIcon aria-hidden size={26} className="shrink-0 max-md:hidden" />
+            <EnvelopeOpenIcon aria-hidden size={26} className="shrink-0" />
             {t("open.tapEnvelope")}
           </Button>
-          <p className="text-center text-base max-md:hidden">{t("open.sealFun")}</p>
+          <p className="text-center text-base">{t("open.sealFun")}</p>
         </>
       )}
     </div>

@@ -25,7 +25,7 @@ type FieldBindings = { id: string; "aria-describedby"?: string; "aria-invalid"?:
 export function PriceInput({ value, onChange, bindings }: { value: string; onChange: (value: string) => void; bindings: FieldBindings }) {
   return (
     <div className="relative">
-      <span aria-hidden className="absolute top-1/2 left-4 -translate-y-1/2 text-xl font-bold text-ink max-md:text-base max-md:font-semibold">
+      <span aria-hidden className="absolute top-1/2 left-4 -translate-y-1/2 text-xl font-bold text-ink">
         ₱
       </span>
       <input
@@ -56,7 +56,7 @@ export function PriceInput({ value, onChange, bindings }: { value: string; onCha
 
 function PhotoButton({ icon, label, capture, disabled, onPick, className = "" }: { icon: ReactNode; label: string; capture?: boolean; disabled: boolean; onPick: (file: File | undefined) => void; className?: string }) {
   return (
-    <label className={`relative flex min-h-tap-lg cursor-pointer items-center justify-center gap-2 rounded-full px-6 py-2 text-center text-lg font-bold ring-2 ring-ink/50 transition duration-200 ease-settle focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-wax-deep hover:bg-ink/5 ${className}`}>
+    <label className={`relative flex min-h-tap-lg max-md:min-h-tap cursor-pointer items-center justify-center gap-2 rounded-full px-6 py-2 text-center text-lg font-bold ring-2 ring-ink/50 transition duration-200 ease-settle focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-wax-deep hover:bg-ink/5 ${className}`}>
       {icon}
       {label}
       <input
@@ -109,7 +109,7 @@ export function PhotoPicker({ slug, imageUrl, onChange, onBusy, compact }: { slu
   if (compact) {
     return (
       <div className="grid min-w-0 grid-cols-1 gap-2">
-        <p className="text-base font-semibold">{t("wiz.item.photoLabel")}</p>
+        <p className="text-lg font-bold">{t("wiz.item.photoLabel")}</p>
         {uploading ? (
           <p role="status" className="flex min-h-tap items-center text-lg font-bold">
             {t("wiz.item.uploading")}
@@ -118,16 +118,16 @@ export function PhotoPicker({ slug, imageUrl, onChange, onBusy, compact }: { slu
           <div className="flex items-center gap-2">
             {/* Blob photos are already compressed client-side, so next/image would only add cost. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt="" width={56} height={56} className="size-14 shrink-0 rounded-field object-cover" />
-            <PhotoButton icon={null} label={t("wiz.item.changeShort")} disabled={uploading} onPick={(file) => void pick(file)} className="min-w-0 flex-1 px-2! text-base! font-semibold! ring-1! ring-white/35!" />
+            <img src={imageUrl} alt="" width={44} height={44} className="size-11 shrink-0 rounded-field object-cover" />
+            <PhotoButton icon={null} label={t("wiz.item.changeShort")} disabled={uploading} onPick={(file) => void pick(file)} className="min-w-0 flex-1 px-2! text-base!" />
             <Button variant="ghost" fit onClick={() => onChange(null)}>
               {t("common.remove")}
             </Button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">
-            <PhotoButton icon={<CameraIcon aria-hidden size={22} className="shrink-0" />} label={t("wiz.item.camera")} capture disabled={uploading} onPick={(file) => void pick(file)} className="hidden px-2! text-base! font-semibold! leading-tight ring-1! ring-white/35! pointer-coarse:flex" />
-            <PhotoButton icon={<ImagesIcon aria-hidden size={22} className="shrink-0" />} label={t("wiz.item.gallery")} disabled={uploading} onPick={(file) => void pick(file)} className="px-2! text-base! font-semibold! leading-tight ring-1! ring-white/35!" />
+            <PhotoButton icon={<CameraIcon aria-hidden size={22} className="shrink-0" />} label={t("wiz.item.camera")} capture disabled={uploading} onPick={(file) => void pick(file)} className="hidden px-2! text-base! leading-tight pointer-coarse:flex" />
+            <PhotoButton icon={<ImagesIcon aria-hidden size={22} className="shrink-0" />} label={t("wiz.item.gallery")} disabled={uploading} onPick={(file) => void pick(file)} className="px-2! text-base! leading-tight" />
           </div>
         )}
         {error && <ErrorNote>{error}</ErrorNote>}
@@ -216,13 +216,13 @@ export function StoreLinkField({ value, error, onChange, compact }: { value: str
           )}
         </Field>
         {store && (
-          <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
-            <CheckIcon aria-hidden size={22} weight="bold" />
+          <p className="flex flex-wrap items-center gap-2 text-base font-bold">
+            <CheckIcon aria-hidden size={22} weight="bold" className="text-pine-700" />
             {t("wiz.item.linkAdded")} <StoreChip url={link} />
           </p>
         )}
         {hint && (
-          <p role="status" className="text-base font-semibold">
+          <p role="status" className="text-base font-bold">
             {hint}
           </p>
         )}
@@ -286,7 +286,7 @@ export function ItemSummary({ item }: { item: Draft }) {
       )}
       <div className="grid min-w-0 flex-1 gap-1">
         <p className="text-xl leading-snug font-bold wrap-anywhere">{item.name}</p>
-        {centavos !== null && <p className="text-lg font-bold text-wax-deep tabular-nums max-md:font-semibold max-md:text-ink">{formatPeso(centavos)}</p>}
+        {centavos !== null && <p className="text-lg font-bold text-wax-deep tabular-nums">{formatPeso(centavos)}</p>}
         {link && <StoreChip url={link} />}
       </div>
     </div>

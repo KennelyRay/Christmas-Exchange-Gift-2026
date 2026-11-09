@@ -8,7 +8,7 @@ import type { PublicParticipant } from "@/lib/types";
 
 type JoinTimes = ReadonlyMap<string, string>;
 
-export function initialsOf({ name, lastName }: PublicParticipant) {
+function initialsOf({ name, lastName }: PublicParticipant) {
   const firstName = name.slice(0, Math.max(0, name.length - lastName.length)).trim();
   const [first] = Array.from(firstName || name);
   const [last] = Array.from(lastName);
@@ -17,7 +17,7 @@ export function initialsOf({ name, lastName }: PublicParticipant) {
 
 export function Avatar({ person }: { person: PublicParticipant }) {
   return (
-    <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-full bg-pine-800 font-display text-xl font-semibold text-gold">
+    <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-full bg-pine-800 font-display text-xl font-semibold text-gold max-md:size-10 max-md:text-base">
       {initialsOf(person)}
     </span>
   );

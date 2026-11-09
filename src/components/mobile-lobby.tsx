@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretDownIcon, CaretRightIcon, CheckIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, ClockCounterClockwiseIcon, EnvelopeSimpleIcon, GiftIcon, MagnifyingGlassIcon, SealCheckIcon, TelevisionIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { pushEntry } from "@/lib/app-history";
@@ -12,15 +12,16 @@ import { groupByFamily, normalizeNamePart } from "@/lib/names";
 import type { LobbyModel, Stage } from "@/lib/stage";
 import type { LobbyView, PublicParticipant } from "@/lib/types";
 import { CodeGate } from "./code-gate";
-import { CountdownFocal } from "./countdown";
+import { CountdownBig } from "./countdown";
 import { TreeAndGifts } from "./illustrations";
-import { AuditList, CONTACT_URL, InstallRow, LanguageToggle } from "./lobby-cards";
+import { AuditList, CONTACT_URL, InstallTip, LanguageToggle } from "./lobby-cards";
 import { MobileEnvelope } from "./mobile-envelope";
-import { HeadlineWithSearch, SoftAvatar, TabBar, tabHref, TopBar, type Tab } from "./mobile-shell";
+import { TabBar, tabHref, TopBar, type Tab } from "./mobile-shell";
+import { Avatar } from "./people";
 import { ShareButton } from "./share";
-import { Button, Dialog, ErrorNote, LinkButton } from "./ui";
-
-/* -------------------------------- Home -------------------------------- */
+import { Stepper } from "./stepper";
+import { Button, buttonClass, Dialog, ErrorNote, inputClass, LinkButton } from "./ui";
+import { WaxSeal } from "./wax-seal";
 
 const STAGE_TITLE: Record<Stage, MessageKey> = {
   1: "home.stage.1",
@@ -29,43 +30,15 @@ const STAGE_TITLE: Record<Stage, MessageKey> = {
   4: "home.stage.4",
 };
 
-const STEPS: ReadonlyArray<[MessageKey, MessageKey]> = [
-  ["step.1", "step.1.note"],
-  ["step.2", "step.2.note"],
-  ["step.3", "step.3.note"],
-  ["step.4", "step.4.note"],
-];
+/* -------------------------------- Home -------------------------------- */
 
-function StepList({ current }: { current: Stage }) {
-  const t = useT();
+function StepDots({ current }: { current: Stage }) {
   return (
-    <ol className="grid gap-4">
-      {STEPS.map(([label, note], index) => {
-        const n = index + 1;
-        return (
-          <li key={label} aria-current={n === current ? "step" : undefined} className="flex gap-4">
-            <span aria-hidden className="flex size-7 shrink-0 items-center justify-center text-base font-semibold text-ink">
-              {n < current ? <CheckIcon size={22} /> : n}
-            </span>
-            <div className="min-w-0">
-              <p className="text-base font-semibold text-ink">
-                {t(label)}
-                {n < current && <span className="sr-only"> {t("step.done")}</span>}
-              </p>
-              <p className="text-sm">{n === current ? `${t("step.now")}. ${t(note)}` : t(note)}</p>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function ParolStar({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="32 32 56 56" aria-hidden className={className}>
-      <path d="M60 32l6 22 22 6-22 6-6 22-6-22-22-6 22-6z" fill="currentColor" />
-    </svg>
+    <span aria-hidden className="flex gap-2">
+      {[1, 2, 3, 4].map((n) => (
+        <span key={n} className={`size-3 rounded-full ${n <= current ? "bg-wax" : "bg-ink/25"} ${n === current ? "ring-2 ring-wax/40 ring-offset-2 ring-offset-paper" : ""}`} />
+      ))}
+    </span>
   );
 }
 
@@ -74,65 +47,86 @@ function MainAction({ model, onSelect }: { model: LobbyModel; onSelect: (tab: Ta
   const { mainAction, lobby } = model;
   const base = `/x/${lobby.slug}`;
 
-  if (mainAction === "add") return <LinkButton href={`${base}/join`}>{t("action.addWishlist")}</LinkButton>;
-  if (mainAction === "envelope") return <Button onClick={() => onSelect("envelope")}>{t("action.openEnvelope")}</Button>;
-  if (mainAction === "chain") return <LinkButton href={`${base}/chain`}>{t("action.joinChain")}</LinkButton>;
+  if (mainAction === "add") {
+    return (
+      <LinkButton href={`${base}/join`} icon={<GiftIcon aria-hidden size={22} />}>
+        {t("action.addWishlist")}
+      </LinkButton>
+    );
+  }
+  if (mainAction === "envelope") {
+    return (
+      <Button onClick={() => onSelect("envelope")} icon={<EnvelopeSimpleIcon aria-hidden size={22} />}>
+        {t("action.openEnvelope")}
+      </Button>
+    );
+  }
+  if (mainAction === "chain") {
+    return (
+      <LinkButton href={`${base}/chain`} variant="gold" icon={<TelevisionIcon aria-hidden size={22} />}>
+        {t("action.joinChain")}
+      </LinkButton>
+    );
+  }
   if (mainAction === "share") return <ShareButton slug={lobby.slug} name={lobby.name} variant="primary" />;
-  return null;
+  return <p className="rounded-tile bg-pine-800 px-4 py-2 text-center text-base font-bold ring-1 ring-white/25">{t("home.nothingToDo")}</p>;
 }
 
 function HomeScreen({ model, onSelect }: { model: LobbyModel; onSelect: (tab: Tab) => void }) {
   const t = useT();
   const [showSteps, setShowSteps] = useState(false);
   const { lobby, stage, christmas, mainAction, joinedName, stale } = model;
+  const count = lobby.participants.length;
   const title = stage === 1 && joinedName ? "home.stage.1.joined" : STAGE_TITLE[stage];
 
   return (
-    <div className="gutter flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-      {stale && <p className="shrink-0 pt-2 text-base">{t("stage.stale")}</p>}
+    <div className="safe-x flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain py-3">
+      {stale && <p className="shrink-0 rounded-tile bg-pine-800 px-4 py-2 text-base font-bold ring-1 ring-white/25">{t("stage.stale")}</p>}
 
-      <div className="flex flex-[1_0_auto] flex-col justify-center gap-8 py-4">
-        <section aria-label={t("count.until")} className="relative w-fit pr-8">
-          <ParolStar className="absolute top-1 right-0 size-6 text-snow/60" />
-          <CountdownFocal target={christmas} />
-        </section>
+      <section aria-label={t("count.until")} className="flex max-h-56 flex-[1_0_auto] flex-col justify-center gap-2 rounded-card bg-pine-800/90 p-4 shadow-card ring-1 ring-gold/40 [[data-big-text]_&]:max-h-none">
+        <h1 className="font-display text-xl font-semibold">{t("count.until")}</h1>
+        <CountdownBig target={christmas} />
+      </section>
 
-        <div>
-          <p className="text-base">{t("home.stepOf", { n: stage })}</p>
-          <p className="mt-1 font-display text-2xl font-semibold">{t(title)}</p>
-          {mainAction === null && <p className="mt-1 text-base">{t("home.nothingToDo")}</p>}
-          <button type="button" onClick={() => setShowSteps(true)} className="min-h-tap text-base underline decoration-current/50 underline-offset-4">
-            {t("home.whatsThis")}
-          </button>
-        </div>
+      <button type="button" onClick={() => setShowSteps(true)} className="paper flex max-h-56 flex-[1_0_auto] flex-col justify-center gap-1 rounded-card bg-paper p-4 text-left shadow-card [[data-big-text]_&]:max-h-none">
+        <span className="text-sm font-bold text-ink-soft">{t("stage.whereWeAre")}</span>
+        <span className="font-display text-2xl font-semibold [@media(max-height:42rem)]:text-xl">
+          {t("home.stepOf", { n: stage })}: {t(title)}
+        </span>
+        <span className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <StepDots current={stage} />
+          <span className="text-sm font-bold text-wax-deep underline underline-offset-4">{t("home.seeSteps")}</span>
+        </span>
+      </button>
+
+      {/* Sticky, so at very large text it stays in reach while the cards scroll under it. */}
+      <div className="sticky bottom-0 z-10 mt-auto grid shrink-0">
+        <MainAction model={model} onSelect={onSelect} />
       </div>
 
-      {/* Sticky, so at very large text it stays in reach while the rest scrolls under it. */}
-      {mainAction !== null && (
-        <div className="sticky bottom-0 z-10 grid shrink-0">
-          <MainAction model={model} onSelect={onSelect} />
-        </div>
-      )}
-
-      <div className="flex shrink-0 flex-wrap items-center gap-x-6 pt-2 pb-2">
-        <Button variant="text" fit onClick={() => onSelect("joined")}>
-          {t("home.joined", { n: lobby.participants.length })}
+      <div className="grid shrink-0 grid-cols-2 gap-2">
+        <Button variant="ghost" size="lg" fit onClick={() => onSelect("joined")} className="gap-2! px-2! text-base!">
+          <UsersThreeIcon aria-hidden size={24} className="shrink-0" />
+          {t("home.joined", { n: count })}
         </Button>
         {mainAction === "share" ? (
-          <LinkButton href={`/x/${lobby.slug}/join`} variant="text" fit>
+          <LinkButton href={`/x/${lobby.slug}/join`} variant="ghost" size="lg" fit className="px-2! text-base!">
             {t("home.addOther")}
           </LinkButton>
         ) : (
-          <ShareButton slug={lobby.slug} name={lobby.name} variant="text" />
+          <ShareButton slug={lobby.slug} name={lobby.name} className="w-full gap-2! px-2! text-base!" />
         )}
       </div>
 
       <Dialog open={showSteps} title={t("steps.title")} onClose={() => setShowSteps(false)}>
-        <StepList current={stage} />
-        <p className="text-base">{t("count.chainExplained")}</p>
-        <p className="text-base font-semibold text-ink">{t("count.reveal", { date: formatManila(lobby.revealAt), manila: t("common.manila") })}</p>
+        {/* The step tiles are see-through, made to sit on the dark background. */}
+        <div className="rounded-card bg-pine-900 p-2">
+          <Stepper current={stage} direction="column" />
+        </div>
+        <p className="text-lg">{t("count.chainExplained")}</p>
+        <p className="text-lg font-bold text-ink">{t("count.reveal", { date: formatManila(lobby.revealAt), manila: t("common.manila") })}</p>
         {lobby.budgetCentavos !== null && (
-          <p className="text-base font-semibold text-ink">
+          <p className="text-lg font-bold text-ink">
             {t("stage.budget")} {formatPeso(lobby.budgetCentavos)}
           </p>
         )}
@@ -147,17 +141,13 @@ function JoinedEmpty({ lobby }: { lobby: LobbyView }) {
   const t = useT();
   const canJoin = lobby.status === "open";
   return (
-    <div className="gutter flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-      <div className="flex flex-[1_0_auto] flex-col justify-center gap-6 py-4">
-        <div className="paper rounded-soft bg-paper p-6">
-          <TreeAndGifts className="mx-auto max-h-[28dvh] w-full" />
-        </div>
-        <h1 className="font-display text-3xl font-semibold">{t("joined.empty")}</h1>
-      </div>
+    <div className="grid min-h-0 flex-1 content-center justify-items-center gap-4 overflow-y-auto text-center">
+      <TreeAndGifts className="max-h-[23dvh] w-full" />
+      <h2 className="font-display text-2xl font-semibold">{canJoin ? t("empty.title") : t("joined.empty")}</h2>
       {canJoin && (
-        <div className="grid shrink-0 gap-2 pb-2">
+        <div className="grid w-full gap-2">
           <LinkButton href={`/x/${lobby.slug}/join`}>{t("empty.first")}</LinkButton>
-          <ShareButton slug={lobby.slug} name={lobby.name} variant="text" className="justify-self-start" />
+          <ShareButton slug={lobby.slug} name={lobby.name} className="w-full" />
         </div>
       )}
     </div>
@@ -167,11 +157,11 @@ function JoinedEmpty({ lobby }: { lobby: LobbyView }) {
 function PersonRow({ person }: { person: PublicParticipant }) {
   const t = useT();
   return (
-    <li className="flex min-h-row min-w-0 shrink-0 items-center gap-4">
-      <SoftAvatar person={person} />
+    <li className="flex min-h-14 min-w-0 shrink-0 items-center gap-3 rounded-tile bg-paper-deep/70 px-2 py-1">
+      <Avatar person={person} />
       <div className="min-w-0 flex-1">
-        <p className="text-base leading-snug font-semibold wrap-anywhere">{person.name}</p>
-        <p className="text-sm">{person.itemCount === 1 ? t("joined.items1") : t("joined.items", { n: person.itemCount })}</p>
+        <p className="text-lg leading-snug font-bold wrap-anywhere">{person.name}</p>
+        <p className="text-sm text-ink-soft">{person.itemCount === 1 ? t("joined.items1") : t("joined.items", { n: person.itemCount })}</p>
       </div>
     </li>
   );
@@ -183,42 +173,59 @@ function JoinedScreen({ lobby }: { lobby: LobbyView }) {
   const [familyKey, setFamilyKey] = useState<string | null>(null);
 
   const count = lobby.participants.length;
-  if (count === 0) return <JoinedEmpty lobby={lobby} />;
-
   const families = groupByFamily(lobby.participants);
   const selected = families.find((family) => family.key === familyKey) ?? null;
   const search = normalizeNamePart(query);
   const shown = (selected ? selected.members : families.flatMap((family) => family.members)).filter((person) => !search || normalizeNamePart(person.name).includes(search));
-  const chip = (active: boolean) => `min-h-tap shrink-0 rounded-full px-3 text-sm whitespace-nowrap wrap-normal transition-colors duration-200 ${active ? "bg-white/15 font-semibold" : ""}`;
+
+  const chip = (active: boolean) => `min-h-tap shrink-0 rounded-full px-3 text-sm font-bold whitespace-nowrap wrap-normal ring-2 ${active ? "bg-pine-800 text-snow ring-pine-800" : "ring-ink/40"}`;
 
   return (
-    <div className="gutter flex min-h-0 flex-1 flex-col gap-4 pt-4">
-      <HeadlineWithSearch title={count === 1 ? t("joined.count1") : t("joined.count", { n: count })} id="mobile-joined-search" value={query} onChange={setQuery} />
+    <div className="safe-x flex min-h-0 flex-1 flex-col py-3">
+      <div className="paper flex min-h-0 flex-1 flex-col gap-2 rounded-card bg-paper p-4 shadow-card">
+        <h1 className="shrink-0 font-display text-3xl font-semibold">{count > 0 ? (count === 1 ? t("joined.count1") : t("joined.count", { n: count })) : t("joined.title")}</h1>
 
-      {families.length > 1 && (
-        <div className="-mx-6 flex shrink-0 gap-1 overflow-x-auto px-6">
-          <button type="button" aria-pressed={selected === null} onClick={() => setFamilyKey(null)} className={chip(selected === null)}>
-            {t("joined.all")}
-          </button>
-          {families.map((family) => (
-            <button key={family.key} type="button" aria-pressed={selected?.key === family.key} onClick={() => setFamilyKey(family.key)} className={chip(selected?.key === family.key)}>
-              {family.label}
-            </button>
-          ))}
-        </div>
-      )}
+        {count === 0 ? (
+          <JoinedEmpty lobby={lobby} />
+        ) : (
+          <>
+            <div className="shrink-0">
+              <label htmlFor="mobile-joined-search" className="mb-1 block text-sm font-bold">
+                {t("joined.search")}
+              </label>
+              <div className="relative">
+                <MagnifyingGlassIcon aria-hidden size={24} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-ink-soft" />
+                <input id="mobile-joined-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" className={`${inputClass} pl-12`} />
+              </div>
+            </div>
 
-      {lobby.drawWarning && <ErrorNote className="shrink-0">{lobby.drawWarning}</ErrorNote>}
+            {families.length > 1 && (
+              <div className="-mx-4 flex shrink-0 gap-2 overflow-x-auto px-4 py-1">
+                <button type="button" aria-pressed={selected === null} onClick={() => setFamilyKey(null)} className={chip(selected === null)}>
+                  {t("joined.all")}
+                </button>
+                {families.map((family) => (
+                  <button key={family.key} type="button" aria-pressed={selected?.key === family.key} onClick={() => setFamilyKey(family.key)} className={chip(selected?.key === family.key)}>
+                    {family.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
-      {shown.length > 0 ? (
-        <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-          {shown.map((person) => (
-            <PersonRow key={person.id} person={person} />
-          ))}
-        </ul>
-      ) : (
-        <p className="min-h-0 flex-1 text-base">{t("joined.noMatch")}</p>
-      )}
+            {lobby.drawWarning && <ErrorNote className="shrink-0">{lobby.drawWarning}</ErrorNote>}
+
+            {shown.length > 0 ? (
+              <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
+                {shown.map((person) => (
+                  <PersonRow key={person.id} person={person} />
+                ))}
+              </ul>
+            ) : (
+              <p className="min-h-0 flex-1 text-lg font-bold">{t("joined.noMatch")}</p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -233,11 +240,12 @@ const QUESTIONS: ReadonlyArray<[MessageKey, MessageKey]> = [
   ["faq.chain", "faq.chain.a"],
 ];
 
-function HelpRow({ label, onClick }: { label: string; onClick: () => void }) {
+function HelpRow({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex min-h-14 w-full shrink-0 items-center gap-4 text-left text-base font-semibold">
+    <button type="button" onClick={onClick} className="paper flex min-h-tap shrink-0 items-center gap-2 rounded-tile bg-paper px-4 py-2 text-left text-lg font-bold">
+      {icon}
       <span className="min-w-0 flex-1">{label}</span>
-      <CaretRightIcon aria-hidden size={20} className="shrink-0" />
+      <CaretRightIcon aria-hidden size={20} weight="bold" className="shrink-0" />
     </button>
   );
 }
@@ -251,51 +259,54 @@ function HelpScreen({ lobby }: { lobby: LobbyView }) {
   const values = { date: formatManila(lobby.revealAt), manila: t("common.manila") };
 
   return (
-    <div className="gutter flex min-h-0 flex-1 flex-col gap-4 pt-4">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4">
+    <div className="safe-x flex min-h-0 flex-1 flex-col gap-3 py-3">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h1 className="font-display text-3xl font-semibold">{t("nav.help")}</h1>
         <LanguageToggle />
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
         {QUESTIONS.map(([question, answer]) => {
           const isOpen = openQuestion === question;
           return (
-            <div key={question} className="shrink-0">
-              <button type="button" aria-expanded={isOpen} onClick={() => setOpenQuestion(isOpen ? null : question)} className="flex min-h-14 w-full items-center gap-4 text-left text-base font-semibold">
+            <div key={question} className="paper shrink-0 rounded-tile bg-paper">
+              <button type="button" aria-expanded={isOpen} onClick={() => setOpenQuestion(isOpen ? null : question)} className="flex min-h-tap w-full items-center gap-2 px-4 py-2 text-left text-lg font-bold">
                 <span className="min-w-0 flex-1">{t(question)}</span>
-                <CaretDownIcon aria-hidden size={20} className={`shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+                <CaretDownIcon aria-hidden size={20} weight="bold" className={`shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
               </button>
-              {isOpen && <p className="animate-soft pb-4 text-base">{t(answer, values)}</p>}
+              {isOpen && <p className="px-4 pb-4 text-lg text-ink-soft">{t(answer, values)}</p>}
             </div>
           );
         })}
 
-        <HelpRow label={t("help.activity")} onClick={() => setSheet("activity")} />
-        {lobby.commitmentHash && <HelpRow label={t("sealed.title", { n: lobby.drawGeneration })} onClick={() => setSheet("sealed")} />}
-        <InstallRow />
+        <HelpRow icon={<ClockCounterClockwiseIcon aria-hidden size={24} className="shrink-0" />} label={t("help.activity")} onClick={() => setSheet("activity")} />
+        {lobby.commitmentHash && <HelpRow icon={<SealCheckIcon aria-hidden size={24} className="shrink-0" />} label={t("sealed.title", { n: lobby.drawGeneration })} onClick={() => setSheet("sealed")} />}
 
         {CONTACT_URL ? (
-          <a href={CONTACT_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-14 shrink-0 items-center text-base font-semibold underline decoration-current/50 underline-offset-4">
+          <a href={CONTACT_URL} target="_blank" rel="noopener noreferrer" className={buttonClass({ variant: "gold", size: "md" }, "shrink-0")}>
             {t("faq.message")}
           </a>
         ) : (
-          <p className="shrink-0 py-4 text-base">{t("faq.askSender")}</p>
+          <p className="shrink-0 text-base font-bold">{t("faq.askSender")}</p>
         )}
+
+        <div className="shrink-0">
+          <InstallTip />
+        </div>
       </div>
 
-      <div className="shrink-0 pb-2">
-        <Button variant="ghost" onClick={() => setSheet("organizer")} className="w-full">
-          {t("help.organizer")}
-        </Button>
-      </div>
+      <Button variant="ghost" size="lg" onClick={() => setSheet("organizer")} className="shrink-0 w-full">
+        {t("help.organizer")}
+      </Button>
 
       <Dialog open={sheet === "activity"} title={t("help.activity")} onClose={close}>
+        <p className="text-base">{t("activity.note")}</p>
         <AuditList entries={lobby.audit} />
       </Dialog>
 
       <Dialog open={sheet === "sealed"} title={t("sealed.title", { n: lobby.drawGeneration })} onClose={close}>
-        <p className="text-base">{t("sealed.body")}</p>
+        <WaxSeal className="size-11" />
+        <p className="text-lg">{t("sealed.body")}</p>
         <p className="font-mono text-sm break-all text-ink">{lobby.commitmentHash}</p>
         <LinkButton href={`/x/${lobby.slug}/seal`} variant="ghost" className="w-full">
           {lobby.sealOpened ? t("sealed.check") : t("sealed.how")}
@@ -336,10 +347,10 @@ export function MobileLobby({ model }: { model: LobbyModel }) {
 
   return (
     <div className="app-screen md:hidden">
-      <TopBar name={lobby.name} />
+      <TopBar name={lobby.name} revealAt={lobby.revealAt} />
       <main className="relative min-h-0 flex-1">
         {screens.map(([id, screen]) => (
-          <div key={id} inert={id !== tab} className={`absolute inset-0 flex flex-col transition-[opacity,transform,visibility] duration-200 ease-settle ${id === tab ? "" : "invisible translate-y-2 opacity-0"}`}>
+          <div key={id} inert={id !== tab} className={`absolute inset-0 flex flex-col ${id === tab ? "" : "invisible"}`}>
             {screen}
           </div>
         ))}

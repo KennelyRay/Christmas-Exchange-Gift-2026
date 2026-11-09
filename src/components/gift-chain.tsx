@@ -16,13 +16,13 @@ import { Button, LinkButton, Paper } from "./ui";
 
 const MIN_REEL_ROWS = 30;
 const SPIN_SECONDS = 2.8;
-const HEADLINE_SIZE = "text-[clamp(3rem,11vw,9rem)]";
+const HEADLINE_SIZE = "text-[clamp(3rem,11vw,9rem)] max-md:text-5xl";
 
 /** Full names vary a lot in length, and the reel has to fit the longest on one line. */
 function nameSize(names: readonly string[]) {
   const longest = Math.max(...names.map((name) => name.length));
-  if (longest > 24) return "text-[clamp(1.5rem,5.5vw,5rem)]";
-  if (longest > 14) return "text-[clamp(2rem,7.5vw,7rem)]";
+  if (longest > 24) return "text-[clamp(1.5rem,5.5vw,5rem)] max-md:text-3xl";
+  if (longest > 14) return "text-[clamp(2rem,7.5vw,7rem)] max-md:text-4xl";
   return HEADLINE_SIZE;
 }
 
@@ -68,7 +68,7 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
   if (step === 0) {
     return (
       <div>
-        <p className="text-[clamp(1.5rem,3vw,2.5rem)]">{t("chain.ready")}</p>
+        <p className="text-[clamp(1.5rem,3vw,2.5rem)] max-md:text-xl">{t("chain.ready")}</p>
         <h1 className={`font-display leading-none font-semibold tracking-tight text-gold ${HEADLINE_SIZE}`}>{t("chain.first")}</h1>
       </div>
     );
@@ -82,11 +82,11 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
   return (
     <div>
       {giver ? (
-        <p className="text-[clamp(1.5rem,3.5vw,3rem)]">
+        <p className="text-[clamp(1.5rem,3.5vw,3rem)] max-md:text-xl">
           <strong className="font-semibold">{giver}</strong> {t("chain.gives")}
         </p>
       ) : (
-        <p className="text-[clamp(1.5rem,3.5vw,3rem)]">{t("chain.begins")}</p>
+        <p className="text-[clamp(1.5rem,3.5vw,3rem)] max-md:text-xl">{t("chain.begins")}</p>
       )}
 
       {spinning ? (
@@ -103,7 +103,7 @@ function Stage({ view, spinning, onSpinDone }: { view: Live; spinning: boolean; 
         </motion.h1>
       )}
 
-      {closesLoop && !spinning && <p className="text-[clamp(1.25rem,2.5vw,2rem)]">{t("chain.loop")}</p>}
+      {closesLoop && !spinning && <p className="text-[clamp(1.25rem,2.5vw,2rem)] max-md:text-lg">{t("chain.loop")}</p>}
     </div>
   );
 }
