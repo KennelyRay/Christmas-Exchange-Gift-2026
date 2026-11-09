@@ -22,8 +22,8 @@ export function CodeEntry({ value, onChange, ...field }: CodeEntryProps) {
         {Array.from({ length: CODE_LENGTH }, (_, index) => (
           <span
             key={index}
-            className={`flex min-h-[4.5rem] items-center justify-center rounded-field bg-white font-display text-4xl font-semibold text-ink tabular-nums ring-2 ${
-              index === Math.min(value.length, CODE_LENGTH - 1) ? "ring-ink/45 group-focus-within:ring-4 group-focus-within:ring-wax-deep" : "ring-ink/45"
+            className={`flex min-h-[4.5rem] items-center justify-center rounded-field bg-white font-display text-4xl font-semibold text-ink tabular-nums ring-2 max-md:ring-0 ${
+              index === Math.min(value.length, CODE_LENGTH - 1) ? "ring-ink/45 group-focus-within:ring-4 group-focus-within:ring-wax-deep max-md:group-focus-within:ring-2 max-md:group-focus-within:ring-gold" : "ring-ink/45"
             }`}
           >
             {value[index] ?? ""}

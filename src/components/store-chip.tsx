@@ -27,9 +27,9 @@ export function StoreLink({ url }: { url: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer nofollow"
-      className="inline-flex min-h-tap-lg items-center justify-center gap-3 rounded-full bg-pine-800 px-6 py-2 text-center text-lg font-bold text-snow transition duration-200 ease-settle hover:bg-pine-700 active:scale-[0.98] max-md:w-full"
+      className="inline-flex min-h-tap-lg items-center justify-center gap-3 rounded-full bg-pine-800 px-6 py-2 text-center text-lg font-bold text-snow transition duration-200 ease-settle hover:bg-pine-700 active:scale-[0.98] max-md:w-full max-md:bg-transparent max-md:text-base max-md:font-semibold max-md:text-ink max-md:ring-1 max-md:ring-ink/40"
     >
-      <StorefrontIcon aria-hidden size={24} className="shrink-0 [[data-big-text]_&]:hidden" />
+      <StorefrontIcon aria-hidden size={24} className="shrink-0 max-md:hidden [[data-big-text]_&]:hidden" />
       <span className="min-w-0 wrap-anywhere">
         {t("reveal.openStore")} ({store})
       </span>

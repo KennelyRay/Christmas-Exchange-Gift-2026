@@ -7,17 +7,18 @@ import { useBackToClose } from "@/lib/app-history";
 import { useT } from "@/lib/i18n";
 
 const pressable =
-  "group inline-flex items-center justify-center gap-3 rounded-full text-center font-bold transition duration-300 ease-settle active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60";
+  "group inline-flex items-center justify-center gap-3 rounded-full text-center font-bold transition duration-300 ease-settle active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 max-md:font-semibold";
 
 const variants = {
-  primary: "bg-wax text-snow shadow-cta hover:bg-wax-deep",
+  primary: "bg-wax text-snow shadow-cta hover:bg-wax-deep max-md:shadow-none",
   gold: "bg-gold text-ink hover:bg-[#ecca80]",
-  ghost: "bg-transparent text-current ring-2 ring-current/60 hover:bg-current/10",
+  ghost: "bg-transparent text-current ring-2 ring-current/60 hover:bg-current/10 max-md:ring-1 max-md:ring-current/40",
+  text: "bg-transparent text-current underline underline-offset-4 decoration-current/50",
 };
 
 const sizes = {
   md: "min-h-tap text-base",
-  lg: "min-h-tap-lg text-lg",
+  lg: "min-h-tap-lg text-lg max-md:text-base",
 };
 
 type Variant = keyof typeof variants;
@@ -26,8 +27,9 @@ type Shape = { variant?: Variant; size?: Size; icon?: ReactNode; fit?: boolean }
 
 /** Primary actions are 56px and everything else at least 48px. Full width on phones unless `fit`. */
 export function buttonClass({ variant = "primary", size, icon, fit }: Shape, extra = "") {
-  const resolved = size ?? (variant === "ghost" ? "md" : "lg");
-  return `${pressable} ${variants[variant]} ${sizes[resolved]} ${icon ? "py-1.5 pr-2 pl-6" : "px-6 py-2"} ${fit ? "" : "max-md:w-full"} ${extra}`;
+  const resolved = size ?? (variant === "ghost" || variant === "text" ? "md" : "lg");
+  const padding = icon ? "py-1.5 pr-2 pl-6" : variant === "text" ? "py-2" : "px-6 py-2";
+  return `${pressable} ${variants[variant]} ${sizes[resolved]} ${padding} ${fit ? "" : "max-md:w-full"} ${extra}`;
 }
 
 function TrailingIcon({ children }: { children: ReactNode }) {
@@ -78,7 +80,7 @@ export function Panel({ className = "", children }: { className?: string; childr
 }
 
 export const inputClass =
-  "min-h-tap-lg w-full min-w-0 rounded-field border-0 bg-white px-4 py-2 text-lg text-ink ring-2 ring-ink/45 transition duration-200 ease-settle placeholder:text-ink-soft/70 focus:ring-wax-deep aria-invalid:ring-wax";
+  "min-h-tap-lg w-full min-w-0 rounded-field border-0 bg-white px-4 py-2 text-lg text-ink ring-2 ring-ink/45 transition duration-200 ease-settle placeholder:text-ink-soft/70 focus:ring-wax-deep aria-invalid:ring-wax max-md:rounded-soft max-md:text-base max-md:ring-1 max-md:ring-ink/20 max-md:focus:ring-2 max-md:focus:ring-gold max-md:aria-invalid:ring-2 max-md:aria-invalid:ring-[var(--error-text)]";
 
 type FieldProps = {
   label: string;
@@ -92,7 +94,7 @@ export function Field({ label, helper, error, children }: FieldProps) {
   const noteId = `${id}-note`;
   return (
     <div className="grid min-w-0 grid-cols-1 gap-2">
-      <label htmlFor={id} className="text-lg font-bold">
+      <label htmlFor={id} className="text-lg font-bold max-md:text-base max-md:font-semibold">
         {label}
       </label>
       {children({
@@ -101,13 +103,13 @@ export function Field({ label, helper, error, children }: FieldProps) {
         "aria-invalid": error ? true : undefined,
       })}
       {error ? (
-        <p id={noteId} className="flex items-start gap-2 text-base font-bold text-wax-deep">
+        <p id={noteId} className="flex items-start gap-2 text-base font-bold text-wax-deep max-md:font-semibold max-md:text-[var(--error-text)]">
           <WarningCircleIcon aria-hidden size={24} weight="fill" className="mt-0.5 shrink-0" />
           {error}
         </p>
       ) : (
         helper && (
-          <p id={noteId} className="text-base text-ink-soft">
+          <p id={noteId} className="text-base text-ink-soft max-md:text-[var(--helper-text)]">
             {helper}
           </p>
         )
@@ -118,7 +120,7 @@ export function Field({ label, helper, error, children }: FieldProps) {
 
 export function ErrorNote({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <p role="alert" className={`flex items-start gap-2 rounded-tile bg-[#f8e4dd] px-4 py-4 text-base font-bold text-wax-deep ${className}`}>
+    <p role="alert" className={`flex items-start gap-2 rounded-tile bg-[#f8e4dd] px-4 py-4 text-base font-bold text-wax-deep max-md:rounded-soft max-md:font-semibold ${className}`}>
       <WarningCircleIcon aria-hidden className="mt-0.5 shrink-0" size={24} weight="fill" />
       <span>{children}</span>
     </p>
@@ -181,7 +183,7 @@ export function Dialog({ open, title, onClose, children, footer, dismissible = t
         if (dismissible && event.target === ref.current) onClose();
       }}
       aria-label={title}
-      className="paper mx-0 mt-auto mb-0 max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-card bg-paper text-ink md:m-auto md:w-[calc(100%-4rem)] md:max-w-xl md:rounded-card"
+      className="paper mx-0 mt-auto mb-0 max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-soft bg-paper text-ink md:m-auto md:w-[calc(100%-4rem)] md:max-w-xl md:rounded-card"
     >
       {open && (
         <div className="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:pt-0 md:p-8">
@@ -199,7 +201,7 @@ export function Dialog({ open, title, onClose, children, footer, dismissible = t
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
             >
-              <span className="h-2 w-16 rounded-full bg-ink/40" />
+              <span className="h-1.5 w-16 rounded-full bg-ink/25" />
             </div>
           )}
           <div className="flex items-start justify-between gap-4 max-md:mt-2">
@@ -208,7 +210,7 @@ export function Dialog({ open, title, onClose, children, footer, dismissible = t
               <button
                 type="button"
                 onClick={onClose}
-                className="-mt-2 -mr-2 flex min-h-tap shrink-0 items-center gap-2 rounded-full px-4 text-base font-bold ring-2 ring-ink/30 hover:bg-ink/10"
+                className="-mt-2 -mr-2 flex min-h-tap shrink-0 items-center gap-2 rounded-full px-4 text-base font-bold ring-2 ring-ink/30 hover:bg-ink/10 max-md:px-2 max-md:font-semibold max-md:ring-0"
               >
                 <XIcon aria-hidden size={20} />
                 {t("common.close")}

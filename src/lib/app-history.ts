@@ -77,7 +77,8 @@ export function useBackToClose(open: boolean, onClose: () => void) {
     } else if (!open && entry.current > 0) {
       const stillThere = historyDepth() >= entry.current;
       entry.current = 0;
-      if (stillThere) goBack();
+      // Two layers can close at once, and each has to wait for the last to finish.
+      if (stillThere) whenHistorySettled(goBack);
     }
   }, [open]);
 

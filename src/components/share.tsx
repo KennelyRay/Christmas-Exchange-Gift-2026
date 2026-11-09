@@ -11,7 +11,7 @@ const COPIED_MS = 3000;
 type ShareButtonProps = {
   slug: string;
   name: string;
-  variant?: "primary" | "ghost";
+  variant?: "primary" | "ghost" | "text";
   className?: string;
 };
 
@@ -49,8 +49,8 @@ export function ShareButton({ slug, name, variant = "ghost", className = "" }: S
 
   return (
     <>
-      <Button variant={variant} size="lg" onClick={start} className={className}>
-        <ShareNetworkIcon aria-hidden size={24} className="shrink-0" />
+      <Button variant={variant} size={variant === "text" ? "md" : "lg"} fit={variant === "text"} onClick={start} className={className}>
+        {variant !== "text" && <ShareNetworkIcon aria-hidden size={24} className="shrink-0 max-md:hidden" />}
         {t("share.cta")}
       </Button>
 

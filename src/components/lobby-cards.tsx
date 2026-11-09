@@ -1,6 +1,6 @@
 "use client";
 
-import { DeviceMobileIcon, EnvelopeOpenIcon, GiftIcon, KeyIcon, type Icon } from "@phosphor-icons/react";
+import { CaretRightIcon, EnvelopeOpenIcon, GiftIcon, KeyIcon, type Icon } from "@phosphor-icons/react";
 import { useState, useSyncExternalStore } from "react";
 import { formatManila } from "@/lib/christmas";
 import { isInstalled, isIos, isPhone } from "@/lib/device";
@@ -11,7 +11,7 @@ import { nameFromJoinEntry } from "@/lib/stage";
 import type { LobbyView, PublicAuditEntry } from "@/lib/types";
 import { TreeAndGifts } from "./illustrations";
 import { ShareButton } from "./share";
-import { buttonClass, Dialog, LinkButton, Panel, Paper } from "./ui";
+import { Button, buttonClass, Dialog, LinkButton, Panel, Paper } from "./ui";
 import { WaxSeal } from "./wax-seal";
 
 const HOW_STEPS: ReadonlyArray<{ icon: Icon; title: MessageKey; body: MessageKey }> = [
@@ -193,7 +193,7 @@ export function LanguageToggle() {
   const t = useT();
   const locale = useLocale();
   return (
-    <div role="group" aria-label={t("common.language")} className="inline-flex w-fit gap-1 rounded-full bg-black/30 p-1 ring-1 ring-white/20">
+    <div role="group" aria-label={t("common.language")} className="inline-flex w-fit gap-1 rounded-full bg-black/30 p-1 ring-1 ring-white/20 max-md:bg-transparent max-md:p-0 max-md:ring-0">
       {(
         [
           ["en", "English"],
@@ -206,7 +206,7 @@ export function LanguageToggle() {
           lang={value === "tl" ? "fil" : "en"}
           aria-pressed={locale === value}
           onClick={() => setLocale(value)}
-          className={`min-h-tap rounded-full px-6 text-base font-bold transition duration-200 ease-settle ${locale === value ? "bg-gold text-ink" : "text-snow"}`}
+          className={`min-h-tap rounded-full px-6 text-base font-bold transition duration-200 ease-settle max-md:px-3 max-md:text-sm max-md:font-medium ${locale === value ? "bg-gold text-ink max-md:bg-white/15 max-md:text-snow" : "text-snow"}`}
         >
           {label}
         </button>
@@ -218,26 +218,41 @@ export function LanguageToggle() {
 const noSubscription = () => () => {};
 const installPlatform = () => (isPhone() && !isInstalled() ? (isIos() ? "iphone" : "android") : null);
 
-/** Shown once per device. It sits low on the page, so appearing late moves nothing. */
-export function InstallTip() {
+/** One quiet row until it's dismissed, then gone for good on this device. */
+export function InstallRow() {
   const t = useT();
+  const [open, setOpen] = useState(false);
   const [dismissed, dismiss] = useDeviceValue("install-tip-dismissed");
   const platform = useSyncExternalStore(noSubscription, installPlatform, () => null);
 
-  if (!platform || dismissed) return null;
+  if (!platform) return null;
 
   return (
-    <Panel>
-      <div className="flex items-start gap-4">
-        <DeviceMobileIcon aria-hidden size={36} weight="duotone" className="shrink-0 text-gold" />
-        <div className="min-w-0">
-          <h2 className="font-display text-xl font-semibold">{t("install.title")}</h2>
-          <p className="mt-1 text-base text-snow-soft">{t(platform === "iphone" ? "install.iphone" : "install.android")}</p>
-        </div>
-      </div>
-      <button type="button" onClick={() => dismiss("1")} className={buttonClass({ variant: "ghost" }, "mt-4 w-full")}>
-        {t("install.dismiss")}
-      </button>
-    </Panel>
+    <>
+      {!dismissed && (
+        <button type="button" onClick={() => setOpen(true)} className="flex min-h-14 w-full shrink-0 items-center gap-4 text-left text-base font-semibold">
+          <span className="min-w-0 flex-1">{t("install.title")}</span>
+          <CaretRightIcon aria-hidden size={20} className="shrink-0" />
+        </button>
+      )}
+      <Dialog
+        open={open}
+        title={t("install.title")}
+        onClose={() => setOpen(false)}
+        footer={
+          <Button
+            onClick={() => {
+              setOpen(false);
+              dismiss("1");
+            }}
+            className="w-full"
+          >
+            {t("install.dismiss")}
+          </Button>
+        }
+      >
+        <p className="text-base">{t(platform === "iphone" ? "install.iphone" : "install.android")}</p>
+      </Dialog>
+    </>
   );
 }

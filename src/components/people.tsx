@@ -8,7 +8,7 @@ import type { PublicParticipant } from "@/lib/types";
 
 type JoinTimes = ReadonlyMap<string, string>;
 
-function initialsOf({ name, lastName }: PublicParticipant) {
+export function initialsOf({ name, lastName }: PublicParticipant) {
   const firstName = name.slice(0, Math.max(0, name.length - lastName.length)).trim();
   const [first] = Array.from(firstName || name);
   const [last] = Array.from(lastName);

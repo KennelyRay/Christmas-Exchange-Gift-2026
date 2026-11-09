@@ -57,12 +57,36 @@
   --spacing-tap: 3rem;
   --spacing-tap-lg: 3.5rem;
 
+  /*
+   * Phone screens (under 768px). Rules that keep them calm:
+   * - Space: 24px side gutters, 24-32px between sections, 12-16px within a group.
+   * - At most one cream card per screen, flat, no cards inside cards, no borders.
+   * - Type: one headline or focal number, 18px body, 16px small label. Weights 500 and 600.
+   * - Colour: red only on the one primary button, gold only on the one key number,
+   *   cream and white for everything else. Other actions are text or a soft outline.
+   */
+  --spacing-row: 4rem;
+  --radius-soft: 1.125rem;
+  --shadow-soft: 0 8px 24px -16px rgb(5 20 15 / 0.45);
+
   --container-page: 85rem;
 
   --ease-settle: cubic-bezier(0.32, 0.72, 0, 1);
 
   --animate-rise: rise 700ms var(--ease-settle) both;
   --animate-shimmer: shimmer 1.8s var(--ease-settle) infinite;
+  --animate-soft: soft-in 220ms var(--ease-settle) both;
+}
+
+@keyframes soft-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes rise {
@@ -124,6 +148,8 @@ body {
   /* A long name at a large text size must wrap, never push the page sideways. */
   overflow-wrap: anywhere;
   --focus-color: var(--color-gold);
+  --error-text: #ffc9bd;
+  --helper-text: var(--color-snow-soft);
 }
 
 /* A fixed layer instead of background-attachment: fixed, which is janky on phones. */
@@ -139,6 +165,8 @@ body::before {
 
 .paper {
   --focus-color: var(--color-wax-deep);
+  --error-text: var(--color-wax-deep);
+  --helper-text: var(--color-ink-soft);
   color: var(--color-ink);
 }
 
@@ -165,7 +193,7 @@ dialog[open] {
 
 @media (width < 48rem) {
   dialog[open] {
-    animation: sheet-up 320ms var(--ease-settle) both;
+    animation: sheet-up 240ms var(--ease-settle) both;
   }
 }
 
@@ -194,6 +222,12 @@ dialog[open] {
   --spacing: 0.125rem;
 }
 
+
+/* Pixels on purpose, like safe-x: enlarged text shouldn't eat the side margins. */
+@utility gutter {
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+}
 
 /*
  * A phone screen: exactly the visible area, with its own inner scrolling, so the
