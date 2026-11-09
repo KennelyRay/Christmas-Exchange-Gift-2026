@@ -17,6 +17,7 @@ export const exchangeStatus = pgEnum("exchange_status", ["open", "locked", "draw
 export const auditEvent = pgEnum("audit_event", [
   "exchange_created",
   "participant_joined",
+  "participant_removed",
   "budget_changed",
   "reveal_time_changed",
   "exclusions_changed",
@@ -71,9 +72,12 @@ export const participants = pgTable(
     codeReissuedAt: timestamp("code_reissued_at", { withTimezone: true }),
     firstOpenedAt: timestamp("first_opened_at", { withTimezone: true }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Set when the organizer removes a wrong or test entry. Records are never deleted. */
+    removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("participants_exchange_name_key").on(t.exchangeId, t.nameKey),
+    // Partial, so someone removed by mistake can join again under the same name.
+    uniqueIndex("participants_exchange_name_key").on(t.exchangeId, t.nameKey).where(sql`${t.removedAt} IS NULL`),
     index("participants_exchange_idx").on(t.exchangeId),
   ],
 );

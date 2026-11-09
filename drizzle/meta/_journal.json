@@ -43,6 +43,13 @@
       "when": 1794228764768,
       "tag": "0005_optional-price",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794230653512,
+      "tag": "0006_participant-removal",
+      "breakpoints": true
     }
   ]
 }

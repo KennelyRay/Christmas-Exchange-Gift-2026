@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircleIcon, EnvelopeOpenIcon, EnvelopeSimpleIcon, LockKeyIcon, LockKeyOpenIcon, TelevisionIcon, XIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, EnvelopeOpenIcon, EnvelopeSimpleIcon, LockKeyIcon, LockKeyOpenIcon, TelevisionIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatManila, fromManilaInputValue, toManilaInputValue } from "@/lib/christmas";
 import { api, ClientApiError, errorMessage } from "@/lib/client-api";
@@ -67,9 +67,11 @@ function SettingsForm({ dashboard, onSave }: { dashboard: DashboardView; onSave:
 }
 
 function RulesEditor({ dashboard, locked, onSave }: { dashboard: DashboardView; locked: boolean; onSave: (pairs: Array<[string, string]>) => Promise<boolean> }) {
-  const [selected, setSelected] = useState<string[]>([]);
+  const [picked, setSelected] = useState<string[]>([]);
   const [feasible, setFeasible] = useState(true);
   const nameOf = (id: string) => dashboard.participants.find((p) => p.id === id)?.name ?? "Unknown";
+  // Someone tapped here may have been removed from the list since.
+  const selected = picked.filter((id) => dashboard.participants.some((p) => p.id === id));
 
   const toggle = (id: string) => setSelected((all) => (all.includes(id) ? all.filter((x) => x !== id) : [...all, id]));
 
@@ -163,6 +165,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
   const [reason, setReason] = useState("");
   const [reissueTarget, setReissueTarget] = useState<{ id: string; name: string } | null>(null);
   const [issuedCode, setIssuedCode] = useState<{ name: string; elfCode: string } | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const performing = useRef(false);
 
   const base = `/api/exchanges/${slug}/organizer`;
@@ -276,7 +279,7 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
         </div>
       )}
 
-      <Section title={`Who's joined (${count})`} note="Lost codes can be replaced here. Everyone will see that you did it.">
+      <Section title={`Who's joined (${count})`} note="Replace a lost code or remove a wrong or test entry here. Everyone will see that you did it.">
         {count === 0 ? (
           <p className="text-ink-soft">Nobody has joined yet. Share the link with the family.</p>
         ) : (
@@ -293,12 +296,28 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
                   <p className="text-lg font-bold wrap-anywhere">{person.name}</p>
                   {isDrawn && <p className="text-base text-ink-soft">{person.hasOpened ? "Opened" : "Not opened yet"}</p>}
                 </div>
-                <Button variant="ghost" fit onClick={() => setReissueTarget(person)} className="shrink-0">
-                  New code
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="ghost" fit onClick={() => setReissueTarget(person)}>
+                    New code
+                  </Button>
+                  {!isDrawn && (
+                    <Button variant="ghost" fit onClick={() => setRemoveTarget(person)}>
+                      <TrashIcon aria-hidden size={20} className="shrink-0" />
+                      Remove
+                    </Button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
+        )}
+
+        {isDrawn && count > 0 && (
+          <p className="mt-4 text-base text-ink-soft">
+            {dashboard.canResetDraw
+              ? "To remove someone now, reset the draw below first, then remove them and run the draw again."
+              : "The reveal has started, so nobody can be removed now."}
+          </p>
         )}
 
         {!isDrawn && (
@@ -440,6 +459,33 @@ export function OrganizerClient({ slug, initial }: { slug: string; initial: Dash
       >
         <p>Their old code stops working right away. The whole family will see in the log that you issued this.</p>
         <p>Give the code straight to them, and don&apos;t use it yourself: it would open their envelope.</p>
+      </Dialog>
+
+      <Dialog
+        open={removeTarget !== null}
+        title={`Remove ${removeTarget?.name ?? ""}?`}
+        onClose={() => setRemoveTarget(null)}
+        footer={
+          <>
+            <Button variant="ghost" size="lg" onClick={() => setRemoveTarget(null)}>
+              Keep them
+            </Button>
+            <Button
+              busy={busy}
+              onClick={async () => {
+                const target = removeTarget;
+                if (!target) return;
+                await perform(() => api(`${base}/participants/${target.id}`, { method: "DELETE" }));
+                setRemoveTarget(null);
+              }}
+            >
+              {busy ? "Removing…" : "Yes, remove them"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-lg">They&apos;ll leave the list and won&apos;t be in the draw, and their secret code will stop working. This can&apos;t be undone, but they can join again.</p>
+        <p className="text-lg">The whole family will see in the Activity list that you removed them.</p>
       </Dialog>
 
       <Dialog open={issuedCode !== null} title={`New code for ${issuedCode?.name ?? ""}`} onClose={() => setIssuedCode(null)} dismissible={false}>

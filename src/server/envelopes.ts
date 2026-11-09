@@ -29,7 +29,7 @@ export async function openEnvelope(
   const [person] = await db
     .select()
     .from(participants)
-    .where(and(eq(participants.id, input.participantId), eq(participants.exchangeId, exchange.id)))
+    .where(and(eq(participants.id, input.participantId), eq(participants.exchangeId, exchange.id), isNull(participants.removedAt)))
     .limit(1);
 
   const verified = person ? await verifyCode(input.code, person.elfCodeHash) : await burnVerification(input.code);

@@ -25,6 +25,7 @@ import {
   POST as loginRoute,
 } from "@/app/api/exchanges/[slug]/organizer/route";
 import { POST as reissueRoute } from "@/app/api/exchanges/[slug]/organizer/participants/[participantId]/code/route";
+import { DELETE as removeRoute } from "@/app/api/exchanges/[slug]/organizer/participants/[participantId]/route";
 import { DELETE as resetRoute, POST as drawRoute } from "@/app/api/exchanges/[slug]/organizer/draw/route";
 import { PUT as exclusionsRoute } from "@/app/api/exchanges/[slug]/organizer/exclusions/route";
 import { POST as poolRoute } from "@/app/api/exchanges/[slug]/organizer/pool/route";
@@ -807,6 +808,90 @@ describe("Gift Chain and the seal", () => {
     const { slug } = await drawn();
     const seal = await body<{ manifest: string | null }>(await call(sealRoute, { slug }, { method: "GET" }));
     expect(seal.manifest).toBeNull();
+  });
+});
+
+describe("removing someone", () => {
+  const remove = (slug: string, participantId: string, cookie?: string) => call(removeRoute, { slug, participantId }, { method: "DELETE", cookie });
+
+  it("is for the organizer of that exchange only", async () => {
+    const { slug, cookie, people } = await setUp();
+    const other = await setUp();
+    expect((await remove(slug, people[0].participantId)).status).toBe(401);
+    expect((await remove(slug, other.people[0].participantId, cookie)).status).toBe(404);
+    expect((await remove(slug, "not-a-uuid", cookie)).status).toBe(404);
+    expect((await lobby(slug)).participants).toHaveLength(4);
+    expect((await lobby(other.slug)).participants).toHaveLength(4);
+  });
+
+  it("takes them off the list, logs it publicly, stops their code, and keeps the record", async () => {
+    const { slug, cookie, people } = await setUp();
+    const [gone] = people;
+    expect((await remove(slug, gone.participantId, cookie)).status).toBe(200);
+
+    const view = await lobby(slug);
+    expect(view.participants.map((p) => p.name)).toEqual(FOUR.slice(1));
+    expect(view.audit[0]).toMatchObject({ event: "participant_removed", detail: `The organizer removed ${gone.name}` });
+
+    const opened = await call(envelopeRoute, { slug }, { body: { participantId: gone.participantId, code: gone.elfCode } });
+    expect(opened.status).toBe(401);
+    expect((await call(reissueRoute, { slug, participantId: gone.participantId }, { cookie })).status).toBe(404);
+    expect((await remove(slug, gone.participantId, cookie)).status).toBe(404);
+
+    const [row] = await db.select().from(schema.participants).where(eq(schema.participants.id, gone.participantId));
+    expect(row.removedAt).not.toBeNull();
+    expect(await db.select().from(schema.wishlistItems).where(eq(schema.wishlistItems.participantId, gone.participantId))).toHaveLength(1);
+  });
+
+  it("lets the same name join again", async () => {
+    const { slug, cookie, people } = await setUp();
+    await remove(slug, people[0].participantId, cookie);
+    const again = await join(slug, FOUR[0]);
+    expect(again.participantId).not.toBe(people[0].participantId);
+    expect((await lobby(slug)).participants.map((p) => p.name)).toContain(FOUR[0]);
+
+    const duplicate = await call(participantsRoutes.POST, { slug }, { body: { ...nameFields(FOUR[0]), items: [item()] } });
+    expect(await errorCode(duplicate)).toBe("name_taken");
+  });
+
+  it("drops their rules and leaves them out of the draw", async () => {
+    const { slug, cookie, people } = await setUp();
+    const [gone, partner, ...rest] = people;
+    await call(exclusionsRoute, { slug }, { method: "PUT", body: { pairs: [[gone.participantId, partner.participantId]] }, cookie });
+    expect((await remove(slug, gone.participantId, cookie)).status).toBe(200);
+
+    const dashboard = await body<DashboardView>(await call(dashboardRoute, { slug }, { method: "GET", cookie }));
+    expect(dashboard.exclusions).toEqual([]);
+    expect(dashboard.participants).toHaveLength(3);
+
+    expect((await call(poolRoute, { slug }, { body: { action: "lock" }, cookie })).status).toBe(200);
+    expect((await call(drawRoute, { slug }, { cookie })).status).toBe(201);
+    const results = await openAll(slug, [partner, ...rest]);
+    expect(results.size).toBe(3);
+    expect([...results.values()]).not.toContain(gone.name);
+  });
+
+  it("counts only the people left when deciding whether the draw can run", async () => {
+    const { slug, cookie, people } = await setUp(FOUR.slice(0, 3));
+    await remove(slug, people[0].participantId, cookie);
+    expect((await call(poolRoute, { slug }, { body: { action: "lock" }, cookie })).status).toBe(422);
+  });
+
+  it("is refused after the draw until the draw is reset", async () => {
+    const { slug, cookie, people } = await drawn();
+    const refused = await remove(slug, people[0].participantId, cookie);
+    expect(refused.status).toBe(409);
+    expect(await errorCode(refused)).toBe("already_drawn");
+
+    expect((await call(resetRoute, { slug }, { method: "DELETE", body: { reason: "test entry" }, cookie })).status).toBe(200);
+    expect((await remove(slug, people[0].participantId, cookie)).status).toBe(200);
+    expect((await call(drawRoute, { slug }, { cookie })).status).toBe(201);
+    expect((await openAll(slug, people.slice(1))).size).toBe(3);
+  });
+
+  it("still can't be done by deleting rows", async () => {
+    const { people } = await setUp();
+    await expect(db.delete(schema.participants).where(eq(schema.participants.id, people[0].participantId))).rejects.toThrow();
   });
 });
 

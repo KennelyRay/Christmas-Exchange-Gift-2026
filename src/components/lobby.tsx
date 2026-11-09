@@ -11,7 +11,7 @@ import { useT } from "@/lib/i18n";
 import { formatPeso } from "@/lib/money";
 import type { MessageKey } from "@/lib/messages";
 import { normalizeNamePart } from "@/lib/names";
-import { joinedNameKey, joinTimesFrom, mainActionOf, stageOf, type MainAction, type Stage } from "@/lib/stage";
+import { isStillJoined, joinedNameKey, joinTimesFrom, mainActionOf, stageOf, type MainAction, type Stage } from "@/lib/stage";
 import type { LobbyView } from "@/lib/types";
 import { CountdownCard } from "./countdown";
 import { ActivityCard, EmptyJoined, Faq, HowItWorksCard, InstallTip, LanguageToggle, OrganizerCard, SealedCard } from "./lobby-cards";
@@ -312,7 +312,8 @@ export function Lobby({ initial }: { initial: LobbyView }) {
 
   const revealTime = new Date(lobby.revealAt).getTime();
   const revealPassed = useHasPassed(revealTime);
-  const [joinedName] = useDeviceValue(joinedNameKey(lobby.slug));
+  const [rememberedName] = useDeviceValue(joinedNameKey(lobby.slug));
+  const joinedName = rememberedName !== null && isStillJoined(rememberedName, lobby.participants) ? rememberedName : null;
 
   const stage = stageOf(lobby.status, revealPassed);
   const model: LobbyModel = {

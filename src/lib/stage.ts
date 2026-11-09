@@ -1,4 +1,5 @@
-import type { LobbyView, PublicAuditEntry } from "./types";
+import { normalizeNamePart } from "./names";
+import type { LobbyView, PublicAuditEntry, PublicParticipant } from "./types";
 
 export type Stage = 1 | 2 | 3 | 4;
 export type MainAction = "add" | "share" | "envelope" | "chain";
@@ -24,9 +25,16 @@ export const nameFromJoinEntry = (entry: PublicAuditEntry) => entry.detail.repla
 export function joinTimesFrom(audit: readonly PublicAuditEntry[]) {
   const times = new Map<string, string>();
   for (const entry of audit) {
-    if (entry.event === "participant_joined") times.set(nameFromJoinEntry(entry), entry.at);
+    // Newest first, so someone removed who joined again keeps their latest time.
+    if (entry.event === "participant_joined" && !times.has(nameFromJoinEntry(entry))) times.set(nameFromJoinEntry(entry), entry.at);
   }
   return times;
+}
+
+/** This device remembers a first name; the organizer may have removed that person since. */
+export function isStillJoined(firstName: string, people: readonly PublicParticipant[]) {
+  const prefix = `${normalizeNamePart(firstName)} `;
+  return people.some((person) => normalizeNamePart(person.name).startsWith(prefix));
 }
 
 export const joinedNameKey = (slug: string) => `joined-name:${slug}`;

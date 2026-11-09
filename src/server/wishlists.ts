@@ -4,7 +4,7 @@ import { exchanges, participants, wishlistItems } from "@/db/schema";
 import { fullNameOf, nameKeyOf, normalizeNamePart } from "@/lib/names";
 import { MAX_PARTICIPANTS, type WishlistSubmission } from "@/lib/validation";
 import { generateElfCode, hashCode } from "./codes";
-import { addAudit, type Exchange } from "./exchanges";
+import { addAudit, isActiveIn, type Exchange } from "./exchanges";
 import { ApiError, isUniqueViolation } from "./http";
 import { isOurImageUrl } from "./uploads";
 
@@ -39,7 +39,7 @@ export async function submitWishlist(exchange: Exchange, input: WishlistSubmissi
       const [{ total }] = await tx
         .select({ total: count() })
         .from(participants)
-        .where(eq(participants.exchangeId, exchange.id));
+        .where(isActiveIn(exchange.id));
       if (total >= MAX_PARTICIPANTS) {
         throw new ApiError(409, "pool_full", "This exchange is full.");
       }

@@ -1,4 +1,4 @@
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { auditLog, exchanges, exclusions, participants, wishlistItems } from "@/db/schema";
@@ -20,6 +20,9 @@ export const addAudit = (db: Writer, exchangeId: string, event: AuditEvent, deta
   db.insert(auditLog).values({ exchangeId, event, detail });
 
 export const shortHash = (hash: string) => hash.slice(0, 12);
+
+/** Removed people stay in the table, but count for nothing anywhere in the app. */
+export const isActiveIn = (exchangeId: string) => and(eq(participants.exchangeId, exchangeId), isNull(participants.removedAt));
 
 export async function findExchange(slug: string): Promise<Exchange | undefined> {
   const [exchange] = await getDb().select().from(exchanges).where(eq(exchanges.slug, slug)).limit(1);
@@ -82,7 +85,7 @@ export async function participantsWithCounts(exchangeId: string) {
     })
     .from(participants)
     .leftJoin(wishlistItems, eq(wishlistItems.participantId, participants.id))
-    .where(eq(participants.exchangeId, exchangeId))
+    .where(isActiveIn(exchangeId))
     .groupBy(participants.id)
     .orderBy(asc(participants.joinedAt), asc(participants.id));
 

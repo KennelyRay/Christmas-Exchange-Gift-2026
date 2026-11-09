@@ -77,7 +77,7 @@ export function Panel({ className = "", children }: { className?: string; childr
 }
 
 export const inputClass =
-  "min-h-tap-lg w-full rounded-field border-0 bg-white px-4 py-2 text-lg text-ink ring-2 ring-ink/45 transition duration-200 ease-settle placeholder:text-ink-soft/70 focus:ring-wax-deep aria-invalid:ring-wax";
+  "min-h-tap-lg w-full min-w-0 rounded-field border-0 bg-white px-4 py-2 text-lg text-ink ring-2 ring-ink/45 transition duration-200 ease-settle placeholder:text-ink-soft/70 focus:ring-wax-deep aria-invalid:ring-wax";
 
 type FieldProps = {
   label: string;
@@ -90,7 +90,7 @@ export function Field({ label, helper, error, children }: FieldProps) {
   const id = useId();
   const noteId = `${id}-note`;
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-2">
       <label htmlFor={id} className="text-lg font-bold">
         {label}
       </label>

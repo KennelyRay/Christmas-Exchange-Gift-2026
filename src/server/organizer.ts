@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { exchanges, exclusions, participants } from "@/db/schema";
@@ -17,6 +17,7 @@ import {
   addAudit,
   assertFutureReveal,
   exclusionPairs,
+  isActiveIn,
   participantsWithCounts,
   requireExchange,
   type Exchange,
@@ -183,7 +184,7 @@ export async function replaceExclusions(exchange: Exchange, rawPairs: Array<[str
         lastNameKey: participants.lastNameKey,
       })
       .from(participants)
-      .where(eq(participants.exchangeId, exchange.id));
+      .where(isActiveIn(exchange.id));
     const known = new Set(people.map((p) => p.id));
 
     const unique = new Map<string, readonly [string, string]>();
@@ -233,7 +234,7 @@ export async function reissueElfCode(exchange: Exchange, participantId: string) 
     const [person] = await tx
       .update(participants)
       .set({ elfCodeHash, codeReissuedAt: new Date() })
-      .where(and(eq(participants.id, participantId), eq(participants.exchangeId, exchange.id)))
+      .where(and(eq(participants.id, participantId), isActiveIn(exchange.id)))
       .returning({ firstName: participants.firstName, lastName: participants.lastName });
     if (!person) throw new ApiError(404, "not_found", "That person isn't in this exchange.");
 
@@ -246,11 +247,47 @@ export async function reissueElfCode(exchange: Exchange, participantId: string) 
   return { name, elfCode };
 }
 
+/**
+ * Takes a wrong or test entry out of the exchange. It is a public event, and the
+ * row and wishlist stay, so this can't quietly rewrite who took part.
+ */
+export async function removeParticipant(exchange: Exchange, participantId: string) {
+  await getDb().transaction(async (tx) => {
+    // The same lock the draw takes, so nobody can be removed while names are being drawn.
+    const [current] = await tx
+      .select({ status: exchanges.status })
+      .from(exchanges)
+      .where(eq(exchanges.id, exchange.id))
+      .for("update");
+    if (current.status === "drawn") {
+      throw new ApiError(409, "already_drawn", "Reset the draw before removing anyone.");
+    }
+
+    const [person] = await tx
+      .update(participants)
+      .set({ removedAt: new Date() })
+      .where(and(eq(participants.id, participantId), isActiveIn(exchange.id)))
+      .returning({ firstName: participants.firstName, lastName: participants.lastName });
+    if (!person) throw new ApiError(404, "not_found", "That person isn't in this exchange.");
+
+    await tx
+      .delete(exclusions)
+      .where(
+        and(
+          eq(exclusions.exchangeId, exchange.id),
+          or(eq(exclusions.participantAId, participantId), eq(exclusions.participantBId, participantId)),
+        ),
+      );
+
+    await addAudit(tx, exchange.id, "participant_removed", `The organizer removed ${fullNameOf(person.firstName, person.lastName)}`);
+  });
+}
+
 export async function openSeal(exchange: Exchange) {
   const [{ total }] = await getDb()
     .select({ total: count() })
     .from(participants)
-    .where(eq(participants.exchangeId, exchange.id));
+    .where(isActiveIn(exchange.id));
 
   if (!canOpenSeal(exchange, total)) {
     throw new ApiError(409, "seal_locked", "The seal opens after the Gift Chain finishes, or a day after Christmas Night.");

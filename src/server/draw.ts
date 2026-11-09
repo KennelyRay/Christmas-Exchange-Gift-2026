@@ -7,7 +7,7 @@ import { fullNameOf } from "@/lib/names";
 import { secureRandomInt } from "@/lib/rng";
 import { randomSalt, seal, sha256Hex } from "./crypto";
 import { describeProblem } from "./draw-check";
-import { addAudit, shortHash, type Exchange } from "./exchanges";
+import { addAudit, isActiveIn, shortHash, type Exchange } from "./exchanges";
 import { ApiError } from "./http";
 
 export const assignmentContext = (exchangeId: string, giverId: string, generation: number) =>
@@ -39,7 +39,7 @@ export async function runDraw(exchangeId: string) {
         lastNameKey: participants.lastNameKey,
       })
       .from(participants)
-      .where(eq(participants.exchangeId, exchangeId))
+      .where(isActiveIn(exchangeId))
       .orderBy(asc(participants.joinedAt), asc(participants.id));
 
     if (people.length < MIN_PARTICIPANTS) {
