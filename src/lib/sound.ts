@@ -68,6 +68,12 @@ function bell(frequency: number, delay: number, duration: number, volume: number
 
 export const playTick = () => bell(1400, 0, 0.05, 0.05);
 
+/** One soft, short ding for the envelope opening. */
+export function playDing() {
+  bell(1318.5, 0, 1.2, 0.1);
+  bell(1975.5, 0.09, 1.0, 0.05);
+}
+
 export function playChime() {
   [659.25, 783.99, 1046.5].forEach((note, i) => bell(note, i * 0.11, 0.9, 0.16));
 }

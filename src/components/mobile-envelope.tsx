@@ -2,9 +2,8 @@
 
 import { CaretLeftIcon, CaretRightIcon, LockKeyIcon, MagnifyingGlassIcon, QuestionIcon, SmileyWinkIcon } from "@phosphor-icons/react";
 import { MotionConfig } from "motion/react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useBackToClose } from "@/lib/app-history";
-import { burst } from "@/lib/celebrate";
 import { formatManila, nextChristmas } from "@/lib/christmas";
 import { api } from "@/lib/client-api";
 import { friendlyError, useT } from "@/lib/i18n";
@@ -13,7 +12,7 @@ import { normalizeNamePart } from "@/lib/names";
 import type { EnvelopeView, LobbyView, PublicParticipant } from "@/lib/types";
 import { CODE_LENGTH, CodeEntry } from "./code-entry";
 import { CountdownBig } from "./countdown";
-import { SealedEnvelope } from "./envelope";
+import { EnvelopeOpening } from "./envelope-opening";
 import { ItemPhoto } from "./item-photo";
 import { Avatar } from "./people";
 import { StoreLink } from "./store-chip";
@@ -191,7 +190,6 @@ function Reveal({ envelope, onClose }: { envelope: Ready; onClose: () => void })
   const t = useT();
   const [index, setIndex] = useState(0);
   const touchStart = useRef<number | null>(null);
-  useEffect(() => burst(1.3), []);
 
   const total = envelope.items.length;
   const item = envelope.items[Math.min(index, total - 1)];
@@ -278,7 +276,11 @@ function EnvelopeSteps({ slug, participants }: { slug: string; participants: Pub
     return (
       <div className="rise safe-x flex min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto overscroll-contain py-2">
         <h1 className="shrink-0 font-display text-3xl font-semibold wrap-anywhere">{t("open.ready.title", { name: envelope.giverName })}</h1>
-        <SealedEnvelope onOpen={() => setOpened(true)} />
+        <EnvelopeOpening
+          recipientName={envelope.recipientName}
+          rememberKey={`${slug}:${person.id}`}
+          onShowWishlist={() => setOpened(true)}
+        />
       </div>
     );
   }

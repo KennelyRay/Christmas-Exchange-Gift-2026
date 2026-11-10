@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretRightIcon, EnvelopeOpenIcon, EnvelopeSimpleIcon, GiftIcon, LockKeyIcon, MagnifyingGlassIcon, QuestionIcon, SmileyWinkIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, EnvelopeSimpleIcon, GiftIcon, LockKeyIcon, MagnifyingGlassIcon, QuestionIcon, SmileyWinkIcon } from "@phosphor-icons/react";
 import { motion, MotionConfig, useAnimate, useReducedMotion } from "motion/react";
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
 import { burst } from "@/lib/celebrate";
@@ -11,106 +11,18 @@ import { formatPeso } from "@/lib/money";
 import { normalizeNamePart } from "@/lib/names";
 import type { EnvelopeView, PublicParticipant } from "@/lib/types";
 import { CODE_LENGTH, CodeEntry } from "./code-entry";
+import { EnvelopeOpening } from "./envelope-opening";
 import { ItemPhoto } from "./item-photo";
 import { Avatar } from "./people";
 import { StoreLink } from "./store-chip";
 import { Button, Dialog, ErrorNote, Field, inputClass, LinkButton, Paper } from "./ui";
-import { WaxSeal } from "./wax-seal";
 
-const TAPS_TO_BREAK = 3;
-const DRAG_TO_BREAK_PX = 80;
 const SHAKES_TO_OPEN = 5;
 const SHAKE_THRESHOLD = 18;
 const OPENING_MS = 1300;
 const FADE_MS = 300;
 
 type Ready = Extract<EnvelopeView, { state: "ready" }>;
-
-export function SealedEnvelope({ onOpen }: { onOpen: () => void }) {
-  const t = useT();
-  const [taps, setTaps] = useState(0);
-  const [opening, setOpening] = useState(false);
-  const reducedMotion = useReducedMotion();
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  function open() {
-    if (opening) return;
-    setOpening(true);
-    burst();
-    timer.current = setTimeout(onOpen, reducedMotion ? FADE_MS : OPENING_MS);
-  }
-
-  function tap() {
-    const next = taps + 1;
-    setTaps(next);
-    if (next >= TAPS_TO_BREAK) open();
-  }
-
-  const settle = { duration: 0.9, ease: [0.32, 0.72, 0, 1] as const };
-
-  return (
-    <div className="grid justify-items-center gap-6 max-md:gap-3">
-      <motion.div
-        className="relative aspect-[7/5] w-full max-w-sm [perspective:1000px] max-md:w-[min(100%,30dvh)]"
-        animate={{ opacity: opening && reducedMotion ? 0 : 1 }}
-        transition={{ duration: FADE_MS / 1000 }}
-      >
-        <div className="absolute inset-0 rounded-tile bg-paper-deep" />
-        <motion.div
-          className="absolute inset-x-4 inset-y-3 rounded-field bg-paper"
-          animate={opening ? { y: "-46%" } : { y: 0 }}
-          transition={{ ...settle, delay: 0.35 }}
-        />
-        <div className="absolute inset-0 rounded-tile bg-[#e6d6b6] [clip-path:polygon(0_100%,50%_46%,100%_100%)]" />
-        <div className="absolute inset-0 rounded-tile bg-[#ecdec2] [clip-path:polygon(0_0,50%_54%,0_100%)]" />
-        <div className="absolute inset-0 rounded-tile bg-[#ecdec2] [clip-path:polygon(100%_0,50%_54%,100%_100%)]" />
-        <motion.div
-          className="absolute inset-x-0 top-0 h-[60%] origin-top rounded-t-tile bg-[#f4e9d2] [clip-path:polygon(0_0,100%_0,50%_100%)]"
-          style={{ zIndex: opening ? 0 : 2 }}
-          animate={opening ? { rotateX: 180 } : { rotateX: 0 }}
-          transition={settle}
-        />
-
-        {!opening && (
-          <motion.button
-            type="button"
-            onClick={tap}
-            aria-label={t("open.sealLabel", { n: TAPS_TO_BREAK - taps })}
-            drag
-            dragSnapToOrigin
-            dragElastic={0.5}
-            dragConstraints={{ left: -120, right: 120, top: -120, bottom: 120 }}
-            onDragEnd={(_, info) => {
-              if (Math.hypot(info.offset.x, info.offset.y) >= DRAG_TO_BREAK_PX) open();
-            }}
-            animate={{ rotate: taps * 11 }}
-            whileTap={{ scale: 0.92 }}
-            transition={{ type: "spring", stiffness: 400, damping: 12 }}
-            className="absolute top-[60%] left-1/2 z-[3] -mt-14 -ml-14 size-28 touch-none rounded-full max-md:-mt-10 max-md:-ml-10 max-md:size-20"
-          >
-            <WaxSeal className="size-full" cracks={taps} />
-          </motion.button>
-        )}
-      </motion.div>
-
-      {opening ? (
-        <p role="status" className="text-center text-2xl font-bold">
-          {t("open.coming")}
-        </p>
-      ) : (
-        <>
-          <Button onClick={open} className="w-full">
-            <EnvelopeOpenIcon aria-hidden size={26} className="shrink-0" />
-            {t("open.tapEnvelope")}
-          </Button>
-          <p className="text-center text-base">{t("open.sealFun")}</p>
-        </>
-      )}
-    </div>
-  );
-}
 
 function GiftBox({ onOpen }: { onOpen: () => void }) {
   const t = useT();
@@ -214,7 +126,6 @@ function GiftBox({ onOpen }: { onOpen: () => void }) {
 
 function Reveal({ envelope, onClose }: { envelope: Ready; onClose: () => void }) {
   const t = useT();
-  useEffect(() => burst(1.3), []);
 
   return (
     <div className="grid gap-6">
@@ -479,7 +390,15 @@ export function EnvelopeClient({ slug, participants }: { slug: string; participa
       <div className="rise grid gap-6">
         <h1 className="font-display text-4xl font-semibold wrap-anywhere">{t("open.ready.title", { name: envelope.giverName })}</h1>
 
-        {style === "envelope" ? <SealedEnvelope onOpen={() => setOpened(true)} /> : <GiftBox onOpen={() => setOpened(true)} />}
+        {style === "envelope" ? (
+          <EnvelopeOpening
+            recipientName={envelope.recipientName}
+            rememberKey={`${slug}:${normalizeNamePart(envelope.giverName)}`}
+            onShowWishlist={() => setOpened(true)}
+          />
+        ) : (
+          <GiftBox onOpen={() => setOpened(true)} />
+        )}
 
         <div>
           <p className="mb-2 text-lg font-bold">{t("open.howTo")}</p>
