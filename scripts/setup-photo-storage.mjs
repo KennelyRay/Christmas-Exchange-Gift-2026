@@ -106,4 +106,6 @@ try {
 }
 
 console.log(failures === 0 ? "\nPhoto storage is ready on this branch." : `\n${failures} check(s) failed. See above.`);
-process.exit(failures === 0 ? 0 : 1);
+// exitCode rather than exit(): exiting while sockets close crashes Node on Windows.
+process.exitCode = failures === 0 ? 0 : 1;
+client.destroy();

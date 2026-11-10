@@ -176,7 +176,7 @@ export function Landing() {
         </h2>
         <p className="mt-6 max-w-[46ch] text-xl">
           A gift exchange for your family where nobody, not even the organizer, knows who got whom until they break
-          their own wax seal.
+          their own wax seal. :D
         </p>
       </section>
     </main>
