@@ -50,6 +50,13 @@
       "when": 1794230653512,
       "tag": "0006_participant-removal",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794274723821,
+      "tag": "0007_photo-storage",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,7 @@ import { Button, Dialog, ErrorNote, Field, inputClass } from "./ui";
 import { isBlank, TOTAL_STEPS, type Draft, type Step, type WishlistWizard } from "./use-wishlist-wizard";
 import { ItemSummary, PhotoPicker, PriceInput, StoreLinkField } from "./wishlist-fields";
 
-type Props = { wizard: WishlistWizard; heading: React.RefObject<HTMLHeadingElement | null>; slug: string; budgetCentavos: number | null; exchangeName: string };
+type Props = { wizard: WishlistWizard; heading: React.RefObject<HTMLHeadingElement | null>; slug: string; exchangeId: string; budgetCentavos: number | null; exchangeName: string };
 
 const query = (step: Step, editing: boolean) => `?step=${step}${editing ? "&item=1" : ""}`;
 const card = "paper rounded-card bg-paper p-4 text-ink shadow-card";
@@ -94,7 +94,7 @@ function Title({ headingRef, children }: { headingRef: React.RefObject<HTMLHeadi
   );
 }
 
-export function MobileWishlist({ wizard: w, heading, slug, budgetCentavos, exchangeName }: Props) {
+export function MobileWishlist({ wizard: w, heading, slug, exchangeId, budgetCentavos, exchangeName }: Props) {
   const router = useRouter();
   const t = useT();
   const [leaving, setLeaving] = useState(false);
@@ -202,7 +202,15 @@ export function MobileWishlist({ wizard: w, heading, slug, budgetCentavos, excha
               >
                 {(props) => <PriceInput bindings={props} value={editor.price} onChange={(price) => w.updateEditor({ price })} />}
               </Field>
-              <PhotoPicker compact slug={slug} imageUrl={editor.imageUrl} onChange={(imageUrl) => w.updateEditor({ imageUrl })} onBusy={w.setPhotoBusy} />
+              <PhotoPicker
+                compact
+                exchangeId={exchangeId}
+                photo={editor.photo}
+                itemName={editor.name.trim() || t("wiz.item.name")}
+                error={errors.photo}
+                onChange={(photo) => w.updateEditor({ photo })}
+                onBusy={w.setPhotoBusy}
+              />
               <StoreLinkField compact value={editor.url} error={errors.url} onChange={(url) => w.updateEditor({ url })} />
             </div>
           )}

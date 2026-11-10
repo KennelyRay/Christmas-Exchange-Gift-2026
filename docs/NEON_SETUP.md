@@ -84,11 +84,55 @@ macOS, Linux, or Git Bash:
 DATABASE_URL_UNPOOLED='postgresql://...production direct string...' npm run db:migrate
 ```
 
-## 6. Create the photo store
+## 6. Set up photo storage (Neon Object Storage)
 
-In Vercel, open **Storage**, create a **Blob** store with public access, and connect it to this project. That adds `BLOB_READ_WRITE_TOKEN` for you. To use photos locally, copy the token into `.env.local`.
+Wishlist photos live in Neon Object Storage, next to the database. It's a beta feature, so check [Neon's storage docs](https://neon.com/docs/storage/overview) if a step below doesn't match what you see.
 
-Without a token the app still works, and people see a message that photos aren't available.
+Storage is **branch-scoped**: each branch has its own bucket contents, endpoint, and credentials. Production must use the production branch's, and Preview and your computer must use the dev branch's, so test photos never mix with the family's.
+
+**a. Check the region.** Object Storage is available in `aws-us-east-2`, `aws-us-east-1`, `aws-eu-central-1`, and `aws-ap-southeast-1`. This project is in `aws-ap-southeast-1` (Singapore), so it's supported.
+
+**b. Sign the CLI in.** Run `neon auth`. It opens a browser to log in.
+
+**c. Create the bucket on each branch.** In the Neon Console, open the branch, go to the **Object storage** tab, choose **New bucket**, name it `wishlist-photos`, and pick **Public read** (anonymous reads, signed writes). Do this on `production` and on `dev`. A branch created later inherits its parent's buckets.
+
+With the CLI, for the branch your CLI is pointed at:
+
+```bash
+neon buckets create wishlist-photos --access-level public_read
+```
+
+**d. Get the credentials for each branch.** On your computer, back up `.env.local` first, then pull the **dev** branch's values:
+
+```bash
+neon env pull --file .env.local
+```
+
+That writes `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`. Check `APP_SECRET` is still there afterwards. For production, create a credential on the production branch:
+
+```bash
+neon credentials create --scope storage:read --scope storage:write --name wishlist-photos-production
+```
+
+The secret is shown only once, so copy it straight into Vercel (step 7). A credential works on its own branch and the branches under it, so a dev credential can never touch production photos.
+
+**e. Allow uploads from the app's sites (CORS).** Phones upload straight to storage, so the bucket must accept requests from the app's addresses. With the dev values in `.env.local`:
+
+```bash
+npm run photos:setup -- --for=dev
+```
+
+That allows `http://localhost:3000` and the Vercel preview addresses. For production, run it with the production branch's values in the shell instead:
+
+```powershell
+$env:AWS_ENDPOINT_URL_S3='...'; $env:AWS_ACCESS_KEY_ID='...'; $env:AWS_SECRET_ACCESS_KEY='...'; npm run photos:setup -- --for=production
+```
+
+The script prints which storage host it's changing, saves the rules, then tests the bucket end to end. It does a test upload, an anonymous read (proving public read is on), and a browser-style check from each allowed address, then deletes the test file. Every line should say `ok`.
+
+Until these variables are set, the app still works: people see a message that photos aren't available and can save items without one.
+
+**f. Daily cleanup.** `vercel.json` schedules `/api/cron/cleanup-photos` once a day. It deletes photos that were uploaded but never saved with a wishlist, after 48 hours. Set `CRON_SECRET` in Vercel Production (step 7) so only Vercel can call it.
 
 ## 7. Add the variables to Vercel
 
@@ -99,8 +143,13 @@ Import the GitHub repo as a Vercel project. Then under **Settings**, **Environme
 | `DATABASE_URL` | production branch, pooled | dev branch, pooled |
 | `DATABASE_URL_UNPOOLED` | production branch, direct | dev branch, direct |
 | `APP_SECRET` | its own new value | a different new value |
+| `AWS_ENDPOINT_URL_S3` | production branch storage endpoint | dev branch storage endpoint |
+| `AWS_ACCESS_KEY_ID` | production branch credential | dev branch credential |
+| `AWS_SECRET_ACCESS_KEY` | production branch credential | dev branch credential |
+| `AWS_REGION` | `ap-southeast-1` | `ap-southeast-1` |
+| `CRON_SECRET` | any long random value | not needed |
 
-Then redeploy so the variables take effect.
+Then redeploy so the variables take effect. The `AWS_*` values come from step 6. They are server-only: never add a `NEXT_PUBLIC_` copy. If an old `BLOB_READ_WRITE_TOKEN` is still set, delete it, since nothing uses it any more.
 
 **Save the production `APP_SECRET` in a password manager.** If it is lost or changed after the draw, nobody can open their envelope and the draw has to be reset.
 
@@ -140,3 +189,8 @@ Don't use Neon's **Reset from parent** on `dev` once real data exists, because i
 | `APP_SECRET must be set to at least 32 characters` | The variable is missing or short for this environment |
 | The first request after a quiet period is slow | Neon's compute is waking up, which takes a moment and is normal |
 | An envelope gives a server error after a deploy | `APP_SECRET` was changed since the draw. Restore the original value |
+| "Photos aren't available right now" | The `AWS_*` storage variables aren't set for this environment |
+| "The photo didn't finish uploading" every time | Usually CORS: run `npm run photos:setup` for that branch and check every line says `ok` |
+| `photos:setup` says the bucket doesn't exist | Create `wishlist-photos` on that branch first (step 6c) |
+| `photos:setup` fails the anonymous read | The bucket isn't public read. Change its access level in the Console |
+| Photos show a gift box instead of the picture | The browser can't load the photo. Check the bucket is public read |

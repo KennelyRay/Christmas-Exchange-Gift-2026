@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigserial,
+  boolean,
   check,
   index,
   integer,
@@ -93,13 +94,41 @@ export const wishlistItems = pgTable(
     name: text("name").notNull(),
     priceCentavos: integer("price_centavos"),
     url: text("url"),
-    imageUrl: text("image_url"),
+    /**
+     * From the old Vercel Blob uploads, which never worked in production. Nothing
+     * reads it. Kept so this migration stays safe for the deployed version, and can
+     * be dropped once the Neon Object Storage version is live.
+     */
+    legacyImageUrl: text("image_url"),
+    /** Object key in Neon Object Storage. The public URL is built from it per branch. */
+    imageKey: text("image_key"),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex("wishlist_items_participant_position_key").on(t.participantId, t.position),
     check("wishlist_items_price_positive", sql`${t.priceCentavos} > 0`),
   ],
+);
+
+/**
+ * Every photo upload ever started. Neon Object Storage doesn't enforce lifecycle
+ * rules, so this is what lets abandoned uploads be found and deleted.
+ */
+export const photoUploads = pgTable(
+  "photo_uploads",
+  {
+    key: text("key").primaryKey(),
+    exchangeId: uuid("exchange_id")
+      .notNull()
+      .references(() => exchanges.id),
+    contentType: text("content_type").notNull(),
+    /** The file arrived and passed the size and type checks. */
+    confirmed: boolean("confirmed").notNull().default(false),
+    /** Saved with a submitted wishlist, so it's locked and never cleaned up. */
+    attached: boolean("attached").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index("photo_uploads_cleanup_idx").on(t.attached, t.createdAt)],
 );
 
 export const exclusions = pgTable(

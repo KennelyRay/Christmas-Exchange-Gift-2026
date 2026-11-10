@@ -9,6 +9,7 @@ import { assignmentContext } from "./draw";
 import type { Exchange } from "./exchanges";
 import { ApiError } from "./http";
 import { clearLimit, enforceLimits, ipKey, refundLimits } from "./rate-limit";
+import { publicPhotoUrl } from "./storage";
 
 const NETWORK_WINDOW_SECONDS = 15 * 60;
 /** A 6-digit code is short, so guessing has to stay slow. A reissued code clears this. */
@@ -68,7 +69,7 @@ export async function openEnvelope(
         name: wishlistItems.name,
         priceCentavos: wishlistItems.priceCentavos,
         url: wishlistItems.url,
-        imageUrl: wishlistItems.imageUrl,
+        imageKey: wishlistItems.imageKey,
       })
       .from(wishlistItems)
       .where(eq(wishlistItems.participantId, recipientId))
@@ -84,7 +85,7 @@ export async function openEnvelope(
     state: "ready",
     giverName,
     recipientName: fullNameOf(recipient.firstName, recipient.lastName),
-    items,
+    items: items.map(({ imageKey, ...item }) => ({ ...item, imageUrl: publicPhotoUrl(imageKey) })),
     codeReissuedAt: person.codeReissuedAt?.toISOString() ?? null,
   };
 }

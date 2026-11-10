@@ -14,6 +14,7 @@ import type { EnvelopeView, LobbyView, PublicParticipant } from "@/lib/types";
 import { CODE_LENGTH, CodeEntry } from "./code-entry";
 import { CountdownBig } from "./countdown";
 import { SealedEnvelope } from "./envelope";
+import { ItemPhoto } from "./item-photo";
 import { Avatar } from "./people";
 import { StoreLink } from "./store-chip";
 import { Button, Dialog, ErrorNote, Field, inputClass } from "./ui";
@@ -221,9 +222,7 @@ function Reveal({ envelope, onClose }: { envelope: Ready; onClose: () => void })
         }}
       >
         {item.imageUrl && (
-          // Blob photos are already compressed client-side, so next/image would only add cost.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={item.imageUrl} src={item.imageUrl} alt={item.name} loading="lazy" className="h-[22dvh] w-full shrink-0 rounded-tile object-contain" />
+          <ItemPhoto key={item.imageUrl} zoomable src={item.imageUrl} alt={item.name} sizes="100vw" fit="contain" className="h-[22dvh] w-full shrink-0 rounded-tile" />
         )}
         <h2 className="font-display text-2xl font-semibold wrap-anywhere">{item.name}</h2>
         {item.priceCentavos !== null && <p className="text-xl font-bold text-wax-deep tabular-nums">{formatPeso(item.priceCentavos)}</p>}

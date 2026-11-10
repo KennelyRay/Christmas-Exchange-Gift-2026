@@ -1,13 +1,16 @@
 "use client";
 
-import { CameraIcon, CheckIcon, ClipboardTextIcon, ImagesIcon } from "@phosphor-icons/react";
-import { useState, type ReactNode } from "react";
-import { api, ClientApiError } from "@/lib/client-api";
+import { ArrowClockwiseIcon, CameraIcon, CheckIcon, ClipboardTextIcon, ImagesIcon } from "@phosphor-icons/react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { ClientApiError } from "@/lib/client-api";
 import { linkFromText, readClipboard } from "@/lib/device";
 import { friendlyError, useT } from "@/lib/i18n";
-import { compressImage, MAX_SOURCE_BYTES } from "@/lib/images";
+import { PhotoProblem, preparePhoto } from "@/lib/images";
 import { formatPeso, parsePesoToCentavos } from "@/lib/money";
+import { discardPhoto, uploadPhoto } from "@/lib/photo-upload";
+import type { UploadedPhoto } from "@/lib/photos";
 import { normalizeWebUrl, storeNameFor } from "@/lib/stores";
+import { ItemPhoto } from "./item-photo";
 import { StoreChip } from "./store-chip";
 import { Button, ErrorNote, Field, inputClass } from "./ui";
 import type { Draft } from "./use-wishlist-wizard";
@@ -54,113 +57,242 @@ export function PriceInput({ value, onChange, bindings }: { value: string; onCha
   );
 }
 
-function PhotoButton({ icon, label, capture, disabled, onPick, className = "" }: { icon: ReactNode; label: string; capture?: boolean; disabled: boolean; onPick: (file: File | undefined) => void; className?: string }) {
+function PhotoButton({ icon, label, capture, disabled, onPick, className = "" }: { icon: ReactNode; label: ReactNode; capture?: boolean; disabled: boolean; onPick: (file: File | undefined) => void; className?: string }) {
   return (
-    <label className={`relative flex min-h-tap-lg max-md:min-h-tap cursor-pointer items-center justify-center gap-2 rounded-full px-6 py-2 text-center text-lg font-bold ring-2 ring-ink/50 transition duration-200 ease-settle focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-wax-deep hover:bg-ink/5 ${className}`}>
+    <label className={`relative flex min-h-tap-lg max-md:min-h-tap cursor-pointer items-center justify-center gap-2 rounded-full px-6 py-2 text-center text-lg font-bold ring-2 ring-ink/50 transition duration-200 ease-settle focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-wax-deep hover:bg-ink/5 has-disabled:cursor-not-allowed has-disabled:opacity-50 ${className}`}>
       {icon}
       {label}
       <input
         type="file"
-        accept={capture ? "image/*" : "image/jpeg,image/png,image/webp,image/heic"}
+        accept="image/*"
         capture={capture ? "environment" : undefined}
         disabled={disabled}
-        aria-label={label}
         onChange={(e) => {
           onPick(e.target.files?.[0]);
           e.target.value = "";
         }}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
       />
     </label>
   );
 }
 
-export function PhotoPicker({ slug, imageUrl, onChange, onBusy, compact }: { slug: string; imageUrl: string | null; onChange: (url: string | null) => void; onBusy: (busy: boolean) => void; compact?: boolean }) {
-  const t = useT();
-  const [uploading, setUploadingValue] = useState(false);
-  const [error, setError] = useState("");
+type PhotoStatus =
+  | { kind: "preparing" }
+  | { kind: "uploading"; preview: string; progress: number }
+  | { kind: "failed"; message: string; retry: Blob | null; preview: string | null };
 
-  function setUploading(value: boolean) {
-    setUploadingValue(value);
-    onBusy(value);
+type PhotoPickerProps = {
+  exchangeId: string;
+  photo: UploadedPhoto | null;
+  onChange: (photo: UploadedPhoto | null) => void;
+  onBusy: (busy: boolean) => void;
+  compact?: boolean;
+  error?: string;
+  itemName: string;
+};
+
+/**
+ * Pick or take a photo, shrink it on the device, and upload it straight away,
+ * so the final submit has nothing heavy left to send.
+ */
+export function PhotoPicker({ exchangeId, photo, onChange, onBusy, compact, error, itemName }: PhotoPickerProps) {
+  const t = useT();
+  const [status, setStatus] = useState<PhotoStatus | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const controller = useRef<AbortController | null>(null);
+  const preview = useRef<string | null>(null);
+  const reportBusy = useEffectEvent(onBusy);
+
+  const working = status?.kind === "preparing" || status?.kind === "uploading";
+
+  function showPreview(blob: Blob | null) {
+    if (preview.current) URL.revokeObjectURL(preview.current);
+    preview.current = blob ? URL.createObjectURL(blob) : null;
+    return preview.current;
+  }
+
+  useEffect(
+    () => () => {
+      controller.current?.abort();
+      if (preview.current) URL.revokeObjectURL(preview.current);
+      reportBusy(false);
+    },
+    [],
+  );
+
+  function messageFor(problem: unknown) {
+    if (problem instanceof PhotoProblem) {
+      return t(problem.kind === "notPhoto" ? "err.photoNotImage" : problem.kind === "tooBig" ? "err.photoBig" : "err.photoRead");
+    }
+    return problem instanceof ClientApiError ? friendlyError(problem, t) : t("err.photoUpload");
+  }
+
+  async function send(blob: Blob, previous: UploadedPhoto | null) {
+    const attempt = new AbortController();
+    controller.current = attempt;
+    const shown = showPreview(blob)!;
+    setStatus({ kind: "uploading", preview: shown, progress: 0 });
+    onBusy(true);
+    try {
+      const uploaded = await uploadPhoto(
+        exchangeId,
+        blob,
+        (progress) => setStatus((current) => (current?.kind === "uploading" ? { ...current, progress } : current)),
+        attempt.signal,
+      );
+      onChange(uploaded);
+      // Never overwrite: the old photo had its own key, so it's deleted instead.
+      if (previous && previous.key !== uploaded.key) discardPhoto(previous.key);
+      showPreview(null);
+      setStatus(null);
+    } catch (problem) {
+      if (attempt.signal.aborted) return;
+      setStatus({ kind: "failed", message: messageFor(problem), retry: blob, preview: shown });
+    } finally {
+      if (!attempt.signal.aborted) onBusy(false);
+    }
   }
 
   async function pick(file: File | undefined) {
-    if (!file) return;
-    setError("");
-    if (file.size > MAX_SOURCE_BYTES) {
-      setError(t("err.photoBig"));
+    if (!file || working) return;
+    controller.current?.abort();
+    setStatus({ kind: "preparing" });
+    onBusy(true);
+    let prepared: Blob;
+    try {
+      prepared = await preparePhoto(file);
+    } catch (problem) {
+      setStatus({ kind: "failed", message: messageFor(problem), retry: null, preview: showPreview(null) });
+      onBusy(false);
       return;
     }
-
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.set("file", await compressImage(file), "photo");
-      const { url } = await api<{ url: string }>(`/api/exchanges/${slug}/uploads`, { form });
-      onChange(url);
-    } catch (caught) {
-      setError(caught instanceof ClientApiError ? friendlyError(caught, t) : t("err.photoRead"));
-    } finally {
-      setUploading(false);
-    }
+    await send(prepared, photo);
   }
 
-  if (compact) {
-    return (
-      <div className="grid min-w-0 grid-cols-1 gap-2">
-        <p className="text-lg font-bold">{t("wiz.item.photoLabel")}</p>
-        {uploading ? (
-          <p role="status" className="flex min-h-tap items-center text-lg font-bold">
-            {t("wiz.item.uploading")}
-          </p>
-        ) : imageUrl ? (
-          <div className="flex items-center gap-2">
-            {/* Blob photos are already compressed client-side, so next/image would only add cost. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt="" width={44} height={44} className="size-11 shrink-0 rounded-field object-cover" />
-            <PhotoButton icon={null} label={t("wiz.item.changeShort")} disabled={uploading} onPick={(file) => void pick(file)} className="min-w-0 flex-1 px-2! text-base!" />
-            <Button variant="ghost" fit onClick={() => onChange(null)}>
-              {t("common.remove")}
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <PhotoButton icon={<CameraIcon aria-hidden size={22} className="shrink-0" />} label={t("wiz.item.camera")} capture disabled={uploading} onPick={(file) => void pick(file)} className="hidden px-2! text-base! leading-tight pointer-coarse:flex" />
-            <PhotoButton icon={<ImagesIcon aria-hidden size={22} className="shrink-0" />} label={t("wiz.item.gallery")} disabled={uploading} onPick={(file) => void pick(file)} className="px-2! text-base! leading-tight" />
-          </div>
-        )}
-        {error && <ErrorNote>{error}</ErrorNote>}
-      </div>
-    );
+  function remove() {
+    controller.current?.abort();
+    showPreview(null);
+    setStatus(null);
+    onBusy(false);
+    if (photo) discardPhoto(photo.key);
+    onChange(null);
   }
+
+  const dropHandlers = {
+    onDragOver: (event: React.DragEvent) => {
+      if (!event.dataTransfer.types.includes("Files")) return;
+      event.preventDefault();
+      setDragging(true);
+    },
+    onDragLeave: () => setDragging(false),
+    onDrop: (event: React.DragEvent) => {
+      event.preventDefault();
+      setDragging(false);
+      void pick(event.dataTransfer.files[0]);
+    },
+  };
+
+  const thumbSize = compact ? "size-16" : "size-40";
+  const iconSize = compact ? 22 : 24;
+  const buttonText = compact ? "px-2! text-base! leading-tight" : "";
+
+  const pickButtons = (
+    <div className={compact ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
+      {/* Computers have no camera to open, so this only shows on touch screens. */}
+      <PhotoButton icon={<CameraIcon aria-hidden size={iconSize} className="shrink-0" />} label={t("wiz.item.camera")} capture disabled={working} onPick={(file) => void pick(file)} className={`hidden pointer-coarse:flex ${buttonText}`} />
+      <PhotoButton
+        icon={<ImagesIcon aria-hidden size={iconSize} className="shrink-0" />}
+        label={
+          <>
+            <span className="pointer-coarse:hidden">{t("wiz.item.choosePhoto")}</span>
+            <span className="hidden pointer-coarse:inline">{t("wiz.item.gallery")}</span>
+          </>
+        }
+        disabled={working}
+        onPick={(file) => void pick(file)}
+        className={`${compact ? "pointer-fine:col-span-2" : ""} ${buttonText}`}
+      />
+      <p aria-hidden className="hidden text-center text-base text-ink-soft pointer-fine:block">
+        {dragging ? t("wiz.item.dropNow") : t("wiz.item.dropPhoto")}
+      </p>
+    </div>
+  );
 
   return (
-    <div className="grid gap-2">
+    <div
+      {...dropHandlers}
+      className={`grid min-w-0 grid-cols-1 gap-2 rounded-tile transition duration-200 ease-settle ${dragging ? "bg-gold/30 outline-3 outline-dashed outline-gold-deep" : ""}`}
+    >
       <p className="text-lg font-bold">{t("wiz.item.photoLabel")}</p>
-      {imageUrl && (
-        // Blob photos are already compressed client-side, so next/image would only add cost.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" width={160} height={160} className="size-40 rounded-tile object-cover" />
-      )}
-      {uploading ? (
-        <p role="status" className="flex min-h-tap-lg items-center text-lg font-bold">
-          {t("wiz.item.uploading")}
+
+      {status?.kind === "preparing" && (
+        <p role="status" className={`flex items-center text-lg font-bold ${compact ? "min-h-tap" : "min-h-tap-lg"}`}>
+          {t("wiz.item.photoPreparing")}
         </p>
-      ) : imageUrl ? (
-        <div className="grid gap-2">
-          <PhotoButton icon={<ImagesIcon aria-hidden size={24} />} label={t("wiz.item.changePhoto")} disabled={uploading} onPick={(file) => void pick(file)} />
-          <Button variant="ghost" onClick={() => onChange(null)} className="w-full">
-            {t("wiz.item.removePhoto")}
-          </Button>
-        </div>
-      ) : (
-        <div className="grid gap-2">
-          {/* Computers have no camera to open, so this only shows on touch screens. */}
-          <PhotoButton icon={<CameraIcon aria-hidden size={24} />} label={t("wiz.item.camera")} capture disabled={uploading} onPick={(file) => void pick(file)} className="hidden pointer-coarse:flex" />
-          <PhotoButton icon={<ImagesIcon aria-hidden size={24} />} label={t("wiz.item.gallery")} disabled={uploading} onPick={(file) => void pick(file)} />
+      )}
+
+      {status?.kind === "uploading" && (
+        <div className="flex items-center gap-4">
+          <div className={`relative shrink-0 overflow-hidden rounded-tile bg-paper-deep ${thumbSize}`}>
+            {/* A photo still on the device, so next/image has nothing to fetch. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={status.preview} alt="" className="size-full object-cover opacity-70" />
+            <div className="absolute inset-x-0 bottom-0 h-2 bg-ink/25">
+              <div className="h-full origin-left bg-gold transition-transform duration-200" style={{ transform: `scaleX(${status.progress})` }} />
+            </div>
+          </div>
+          <p role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(status.progress * 100)} className="text-lg font-bold tabular-nums">
+            {t("wiz.item.photoProgress", { percent: Math.round(status.progress * 100) })}
+          </p>
         </div>
       )}
+
+      {status?.kind === "failed" && (
+        <>
+          {status.preview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={status.preview} alt="" className={`rounded-tile object-cover opacity-60 ${thumbSize}`} />
+          )}
+          <ErrorNote>{status.message}</ErrorNote>
+          {status.retry && (
+            <Button size="lg" onClick={() => void send(status.retry!, photo)} className="w-full">
+              <ArrowClockwiseIcon aria-hidden size={iconSize} className="shrink-0" />
+              {t("wiz.item.photoRetry")}
+            </Button>
+          )}
+          <p className="text-base text-ink-soft">{t("wiz.item.photoSkip")}</p>
+        </>
+      )}
+
+      {!status && photo && (
+        <div className={compact ? "flex items-center gap-2" : "grid gap-2"}>
+          <div className={compact ? "relative shrink-0" : "relative w-fit"}>
+            <ItemPhoto src={photo.url} alt={itemName} sizes={compact ? "64px" : "160px"} className={`rounded-tile ${thumbSize}`} />
+            <span className="absolute -top-2 -right-2 flex size-8 items-center justify-center rounded-full bg-pine-700 text-snow ring-2 ring-paper">
+              <CheckIcon aria-hidden size={18} weight="bold" />
+            </span>
+          </div>
+          <p role="status" className={`font-bold ${compact ? "sr-only" : "text-lg"}`}>
+            {t("wiz.item.photoDone")}
+          </p>
+          <div className={compact ? "flex min-w-0 flex-1 gap-2" : "grid gap-2"}>
+            <PhotoButton
+              icon={compact ? null : <ImagesIcon aria-hidden size={24} />}
+              label={compact ? t("wiz.item.changeShort") : t("wiz.item.changePhoto")}
+              disabled={working}
+              onPick={(file) => void pick(file)}
+              className={compact ? "min-w-0 flex-1 px-2! text-base!" : ""}
+            />
+            <Button variant="ghost" fit={compact} onClick={remove} className={compact ? "" : "w-full"}>
+              {compact ? t("common.remove") : t("wiz.item.removePhoto")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {((!status && !photo) || status?.kind === "failed") && pickButtons}
+
       {error && <ErrorNote>{error}</ErrorNote>}
     </div>
   );
@@ -279,11 +411,7 @@ export function ItemSummary({ item }: { item: Draft }) {
   const link = item.url.trim() ? normalizeWebUrl(item.url) : "";
   return (
     <div className="flex min-w-0 items-start gap-4">
-      {item.imageUrl && (
-        // Blob photos are already compressed client-side, so next/image would only add cost.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.imageUrl} alt="" width={80} height={80} loading="lazy" className="size-20 shrink-0 rounded-tile object-cover" />
-      )}
+      {item.photo && <ItemPhoto src={item.photo.url} alt={item.name} sizes="80px" className="size-20 shrink-0 rounded-tile" />}
       <div className="grid min-w-0 flex-1 gap-1">
         <p className="text-xl leading-snug font-bold wrap-anywhere">{item.name}</p>
         {centavos !== null && <p className="text-lg font-bold text-wax-deep tabular-nums">{formatPeso(centavos)}</p>}

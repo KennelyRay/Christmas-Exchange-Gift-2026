@@ -6,18 +6,14 @@ import { MAX_PARTICIPANTS, type WishlistSubmission } from "@/lib/validation";
 import { generateElfCode, hashCode } from "./codes";
 import { addAudit, isActiveIn, type Exchange } from "./exchanges";
 import { ApiError, isUniqueViolation } from "./http";
-import { isOurImageUrl } from "./uploads";
+import { attachPhotos } from "./photos";
 
 /**
  * The only way a wishlist is ever written. There is deliberately no update or
  * delete counterpart, and database triggers reject those operations too.
  */
 export async function submitWishlist(exchange: Exchange, input: WishlistSubmission) {
-  for (const item of input.items) {
-    if (item.imageUrl && !isOurImageUrl(item.imageUrl, exchange.id)) {
-      throw new ApiError(422, "invalid_image", "One of the photos didn't upload properly. Please add it again.");
-    }
-  }
+  const photoKeys = input.items.flatMap((item) => (item.imageKey ? [item.imageKey] : []));
 
   const elfCode = generateElfCode();
   const elfCodeHash = await hashCode(elfCode);
@@ -63,9 +59,10 @@ export async function submitWishlist(exchange: Exchange, input: WishlistSubmissi
           name: item.name,
           priceCentavos: item.priceCentavos ?? null,
           url: item.url ?? null,
-          imageUrl: item.imageUrl ?? null,
+          imageKey: item.imageKey ?? null,
         })),
       );
+      await attachPhotos(tx, exchange.id, photoKeys);
 
       await addAudit(tx, exchange.id, "participant_joined", `${name} joined the pool`);
       return person.id;

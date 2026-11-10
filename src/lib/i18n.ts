@@ -59,6 +59,9 @@ const FRIENDLY_ERRORS: Record<string, MessageKey> = {
   uploads_unavailable: "err.photoOff",
   file_too_large: "err.photoBig",
   unsupported_file: "err.photoType",
+  photo_missing: "err.photoUpload",
+  upload_failed: "err.photoUpload",
+  photo_locked: "err.photoFailed",
 };
 
 /** Server messages are written for logs and tests; the family sees these instead. */

@@ -2,7 +2,7 @@
 
 A family Christmas gift exchange with no accounts. Everyone submits a locked wishlist, a blind and verifiable draw makes one single gift chain, and each person opens their own wax-sealed envelope. On Christmas Night the chain is revealed link by link on the TV.
 
-Built with Next.js 16, TypeScript, Tailwind 4, Neon Postgres, Drizzle, and Vercel Blob. To deploy it, follow [docs/NEON_SETUP.md](docs/NEON_SETUP.md).
+Built with Next.js 16, TypeScript, Tailwind 4, Neon Postgres, Drizzle, and Neon Object Storage for wishlist photos. To deploy it, follow [docs/NEON_SETUP.md](docs/NEON_SETUP.md).
 
 ## How it works
 
@@ -28,14 +28,13 @@ An exchange moves through `open` (joining), `locked` (rules, then draw), and `dr
 
 ## API
 
-All routes live under `/api/exchanges`, validate input with zod, and return errors as `{ error: { code, message, fields? } }`.
+Exchange routes live under `/api/exchanges` and photo routes under `/api/photos`. All validate input with zod and return errors as `{ error: { code, message, fields? } }`.
 
 | Method and path | Who | Purpose |
 | --- | --- | --- |
 | `POST /` | Anyone | Create an exchange. Returns the Organizer Code once |
 | `GET /[slug]` | Anyone | Lobby data |
 | `POST /[slug]/participants` | Anyone | Submit a wishlist. Returns the Elf Code once. There is no update or delete route |
-| `POST /[slug]/uploads` | Anyone | Upload a compressed wishlist photo |
 | `POST /[slug]/envelope` | Elf Code | Open an envelope. Rate limited |
 | `GET /[slug]/chain` | Anyone | Links revealed so far, nothing before Christmas Night |
 | `POST /[slug]/chain` | Organizer | Reveal the next link |
@@ -47,7 +46,22 @@ All routes live under `/api/exchanges`, validate input with zod, and return erro
 | `POST`, `DELETE /[slug]/organizer/draw` | Organizer | Run the draw, or reset it with a public reason |
 | `POST /[slug]/organizer/participants/[id]/code` | Organizer | Issue a new Elf Code |
 | `POST /[slug]/organizer/seal` | Organizer | Open the seal |
+| `POST /api/photos/upload-url` | Anyone, pool open | A 5-minute upload address for one photo. Rate limited |
+| `POST /api/photos/confirm` | Anyone | Checks the uploaded photo's size and real file type, deleting it if wrong |
+| `POST /api/photos/delete` | Anyone | Removes a photo not yet saved with a wishlist |
+| `GET /api/cron/cleanup-photos` | Vercel Cron | Deletes uploads abandoned for 48 hours |
 
+### Wishlist photos
+
+The browser does the heavy work, so phone photos of any size stay within Vercel's limits:
+
+1. **On the phone:** the file's real type is checked from its bytes, so a PDF renamed `.jpg` is rejected. iPhone HEIC photos are converted by `heic-to`, loaded only when one turns up. The photo is turned upright, shrunk to 1600px, and saved as WebP (JPEG on older Safari) at about 500 KB. Saving it again drops the EXIF data, including GPS location.
+2. **Upload:** the server hands out a presigned PUT URL for a fresh random key, `exchanges/{exchangeId}/items/{uuid}.webp`. The browser uploads straight to Neon Object Storage with progress, then asks the server to confirm. The server checks the size and real type, and deletes anything wrong.
+3. **Saving:** only the key is stored, in `wishlist_items.image_key`. It's locked to the wishlist in the same transaction, and the public URL is built per branch when shown.
+4. **Showing:** `next/image` serves photos in the wizard review and the envelope reveal, where they can be opened full screen. A gift box replaces any photo that fails to load.
+5. **Cleanup:** removed or replaced photos are deleted right away. Everything else unsaved is deleted by a daily Vercel Cron job after 48 hours.
+
+The Pool deliberately shows no photos, because wishlists stay hidden until the draw.
 ## Data model
 
 Migrations are in [drizzle/](drizzle/) and the schema is [src/db/schema.ts](src/db/schema.ts).
@@ -56,7 +70,8 @@ Migrations are in [drizzle/](drizzle/) and the schema is [src/db/schema.ts](src/
 | --- | --- |
 | `exchanges` | Status, organizer code hash, budget hint, Christmas Night, seal fingerprint and sealed manifest |
 | `participants` | `first_name`, `last_name`, normalized `last_name_key` (the family), full-name duplicate key, Elf Code hash |
-| `wishlist_items` | Item name, price in centavos, link, photo URL |
+| `wishlist_items` | Item name, price in centavos, link, photo object key (`image_key`). The unused `image_url` column from the old Vercel Blob uploads is kept until this version is live |
+| `photo_uploads` | Every photo upload started, whether it passed the checks, and whether a submitted wishlist uses it |
 | `exclusions` | Extra pairs who can't draw each other, on top of the automatic family rule |
 | `assignments` | One row per giver, with recipient and position encrypted |
 | `audit_log` | The public history |
@@ -94,6 +109,7 @@ Limits you should know about:
 - **Christmas Night can be moved earlier before the draw.** Every change appears in the public log.
 - **The seal proves nothing changed after sealing.** It can't prove the draw was never reset and rerun, which is why resets are logged publicly with a reason.
 - **Elf Codes are 6 digits, chosen because they're easy to type.** That is far fewer combinations than words, so guessing is limited to 6 tries per person per hour. Someone guessing nonstop from now until Christmas would still have only about a 1 in 150 chance of hitting a given person's code.
+- **Photos can be viewed by anyone with their link.** The bucket is public-read so photos load fast and cache well. Each photo's address contains two random IDs, so it can't be guessed, but anyone a link is passed to can see the photo.
 - **Wrong guesses can lock someone out for an hour.** The limit is per person, so a relative guessing at someone's code can temporarily block them. A new code from the organizer clears it.
 
 ## Commands
@@ -105,12 +121,15 @@ npm run typecheck
 npm run lint
 npm run db:generate  # create a migration after editing the schema
 npm run db:migrate   # apply migrations to the branch in DATABASE_URL_UNPOOLED
+npm run photos:setup -- --for=dev   # set and test photo bucket CORS for the branch in .env.local
 ```
 
 Tests run against PGlite, a real Postgres engine in WebAssembly, so they need no Neon account and can't touch real data.
 
-To click through the app with no Neon account, start it on a throwaway in-memory database. Photo uploads stay off, and data disappears when it stops. Production never loads this code.
+To click through the app with no Neon account, start it on a throwaway in-memory database. Data disappears when it stops, and production never loads this code. For photos too, run `node e2e/fake-s3.mjs` in another terminal first. It's a stand-in for the storage bucket that doesn't check signatures.
 
 ```powershell
-$env:E2E_PGLITE='1'; $env:APP_SECRET='local-only-secret-at-least-32-characters'; npx next dev
+$env:E2E_PGLITE='1'; $env:APP_SECRET='local-only-secret-at-least-32-characters'
+$env:AWS_ENDPOINT_URL_S3='http://localhost:3999'; $env:AWS_ACCESS_KEY_ID='test'; $env:AWS_SECRET_ACCESS_KEY='test'; $env:AWS_REGION='us-east-1'
+npx next dev
 ```

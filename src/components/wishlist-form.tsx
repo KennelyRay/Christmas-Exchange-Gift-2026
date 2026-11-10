@@ -15,7 +15,7 @@ import { Button, Dialog, ErrorNote, Field, inputClass, Paper } from "./ui";
 import { TOTAL_STEPS, useWishlistWizard, type Step, type WishlistWizard } from "./use-wishlist-wizard";
 import { ItemSummary, PhotoPicker, PriceInput, StepHeading, StoreLinkField } from "./wishlist-fields";
 
-type Props = { slug: string; budgetCentavos: number | null; exchangeName: string };
+type Props = { slug: string; exchangeId: string; budgetCentavos: number | null; exchangeName: string };
 
 /** One hook above both layouts, so turning a phone sideways can't lose a code shown once. */
 export function WishlistForm(props: Props) {
@@ -25,7 +25,7 @@ export function WishlistForm(props: Props) {
   return useIsPhoneWidth() ? <MobileWishlist wizard={wizard} heading={heading} {...props} /> : <DesktopWishlist wizard={wizard} heading={heading} {...props} />;
 }
 
-function DesktopWishlist({ wizard, heading, slug, budgetCentavos, exchangeName }: Props & { wizard: WishlistWizard; heading: RefObject<HTMLHeadingElement | null> }) {
+function DesktopWishlist({ wizard, heading, slug, exchangeId, budgetCentavos, exchangeName }: Props & { wizard: WishlistWizard; heading: RefObject<HTMLHeadingElement | null> }) {
   const router = useRouter();
   const t = useT();
   const {
@@ -172,7 +172,14 @@ function DesktopWishlist({ wizard, heading, slug, budgetCentavos, exchangeName }
                   >
                     {(props) => <PriceInput bindings={props} value={editor.price} onChange={(price) => updateEditor({ price })} />}
                   </Field>
-                  <PhotoPicker slug={slug} imageUrl={editor.imageUrl} onChange={(imageUrl) => updateEditor({ imageUrl })} onBusy={setPhotoBusy} />
+                  <PhotoPicker
+                    exchangeId={exchangeId}
+                    photo={editor.photo}
+                    itemName={editor.name.trim() || t("wiz.item.name")}
+                    error={errors.photo}
+                    onChange={(photo) => updateEditor({ photo })}
+                    onBusy={setPhotoBusy}
+                  />
                   <StoreLinkField value={editor.url} error={errors.url} onChange={(url) => updateEditor({ url })} />
                 </div>
               </Paper>

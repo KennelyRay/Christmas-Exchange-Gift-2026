@@ -11,9 +11,37 @@ import { hashCode } from "@/server/codes";
 
 const state = vi.hoisted(() => ({ db: undefined as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
-vi.mock("@vercel/blob", () => ({
-  put: async (pathname: string) => ({ url: `https://store.public.blob.vercel-storage.com/${pathname}` }),
+
+/** Stands in for Neon Object Storage: what a browser PUT would have left in the bucket. */
+const storage = vi.hoisted(() => ({
+  configured: true,
+  objects: new Map<string, { bytes: Uint8Array; contentType: string }>(),
 }));
+vi.mock("@/server/storage", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/server/storage")>();
+  const { ApiError } = await import("@/server/http");
+  const endpoint = "https://br-test.storage.c-3.ap-southeast-1.aws.neon.tech";
+  return {
+    ...real,
+    requireStorage: () => {
+      if (!storage.configured) throw new ApiError(503, "uploads_unavailable", "Photo uploads aren't set up yet.");
+      return {};
+    },
+    publicPhotoUrl: (key: string | null) => (key && storage.configured ? `${endpoint}/wishlist-photos/${key}` : null),
+    presignPhotoUpload: async (key: string, contentType: string) => ({
+      url: `${endpoint}/wishlist-photos/${key}?X-Amz-Signature=test`,
+      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000, immutable" },
+      expiresIn: 300,
+    }),
+    headPhoto: async (key: string) => {
+      const object = storage.objects.get(key);
+      return object ? { size: object.bytes.length, contentType: object.contentType } : null;
+    },
+    readPhotoStart: async (key: string) => storage.objects.get(key)!.bytes.slice(0, 16),
+    deletePhoto: async (key: string) => void storage.objects.delete(key),
+    deletePhotos: async (keys: string[]) => keys.forEach((key) => storage.objects.delete(key)),
+  };
+});
 
 import { POST as createRoute } from "@/app/api/exchanges/route";
 import { GET as lobbyRoute } from "@/app/api/exchanges/[slug]/route";
@@ -30,8 +58,11 @@ import { DELETE as resetRoute, POST as drawRoute } from "@/app/api/exchanges/[sl
 import { PUT as exclusionsRoute } from "@/app/api/exchanges/[slug]/organizer/exclusions/route";
 import { POST as poolRoute } from "@/app/api/exchanges/[slug]/organizer/pool/route";
 import { POST as openSealRoute } from "@/app/api/exchanges/[slug]/organizer/seal/route";
-import { POST as uploadRoute } from "@/app/api/exchanges/[slug]/uploads/route";
 import * as participantsRoutes from "@/app/api/exchanges/[slug]/participants/route";
+import { GET as cleanupRoute } from "@/app/api/cron/cleanup-photos/route";
+import { POST as confirmPhotoRoute } from "@/app/api/photos/confirm/route";
+import { POST as deletePhotoRoute } from "@/app/api/photos/delete/route";
+import { POST as uploadUrlRoute } from "@/app/api/photos/upload-url/route";
 import { GET as sealRoute } from "@/app/api/exchanges/[slug]/seal/route";
 
 let client: PGlite;
@@ -192,7 +223,7 @@ describe("wishlist submission and locking", () => {
     expect((await submit([{ name: "Bag", priceCentavos: -5 }])).status).toBe(422);
     expect((await submit([{ name: "Bag", priceCentavos: 0 }])).status).toBe(422);
     expect((await submit([{ name: "Bag", priceCentavos: 100, url: "javascript:alert(1)" }])).status).toBe(422);
-    expect((await submit([{ name: "Bag", priceCentavos: 100, imageUrl: "https://evil.example/x.png" }])).status).toBe(422);
+    expect((await submit([{ name: "Bag", priceCentavos: 100, imageKey: "https://evil.example/x.png" }])).status).toBe(422);
   });
 
   it("saves an item with no price as empty, whether it's left out or sent as null", async () => {
@@ -245,81 +276,211 @@ describe("wishlist submission and locking", () => {
   });
 });
 
-describe("photo uploads", () => {
-  const JPEG = [0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4];
+describe("wishlist photos", () => {
+  const MB5 = 5 * 1024 * 1024;
+  const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50, 9, 9, 9, 9, 9, 9]);
+  const PDF = new TextEncoder().encode("%PDF-1.7 not really a picture");
+  const KEY_PATTERN = /^exchanges\/[0-9a-f-]{36}\/items\/[0-9a-f-]{36}\.webp$/;
 
-  function upload(slug: string, bytes: number[] | Uint8Array, claimedType = "image/jpeg") {
-    const form = new FormData();
-    form.set("file", new File([new Uint8Array(bytes)], "photo", { type: claimedType }));
-    const request = new Request("http://test.local/api", {
-      method: "POST",
-      body: form,
-      headers: { "x-real-ip": `10.1.0.${++ipCounter}` },
-    });
-    return uploadRoute(request, { params: Promise.resolve({ slug }) });
+  const exchangeIdOf = async (slug: string) =>
+    (await db.select({ id: schema.exchanges.id }).from(schema.exchanges).where(eq(schema.exchanges.slug, slug)))[0].id;
+
+  async function requestUpload(exchangeId: string, contentType = "image/webp", size = WEBP.length) {
+    return call(uploadUrlRoute, {}, { body: { exchangeId, contentType, size } });
   }
 
-  function withBlobToken() {
-    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "test-token");
+  /** What the browser does with the presigned URL. */
+  function browserPut(key: string, bytes: Uint8Array, contentType = "image/webp") {
+    storage.objects.set(key, { bytes, contentType });
   }
 
-  it("says so plainly when uploads aren't configured", async () => {
-    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+  const confirm = (key: string) => call(confirmPhotoRoute, {}, { body: { key } });
+
+  async function uploadedPhoto(exchangeId: string) {
+    const { key } = await body<{ key: string }>(await requestUpload(exchangeId));
+    browserPut(key, WEBP);
+    expect((await confirm(key)).status).toBe(200);
+    return key;
+  }
+
+  const submitWithPhoto = (slug: string, name: string, imageKey: string) =>
+    call(participantsRoutes.POST, { slug }, { body: { ...nameFields(name), items: [{ name: "Slippers", imageKey }] } });
+
+  it("says plainly when storage isn't set up", async () => {
+    storage.configured = false;
+    try {
+      const { slug } = await createExchange();
+      const response = await requestUpload(await exchangeIdOf(slug));
+      expect(response.status).toBe(503);
+      expect(await errorCode(response)).toBe("uploads_unavailable");
+    } finally {
+      storage.configured = true;
+    }
+  });
+
+  it("hands out a fresh, unguessable key under this exchange every time", async () => {
     const { slug } = await createExchange();
-    const response = await upload(slug, JPEG);
-    expect(response.status).toBe(503);
-    expect(await errorCode(response)).toBe("uploads_unavailable");
-    vi.unstubAllEnvs();
+    const exchangeId = await exchangeIdOf(slug);
+    const first = await body<{ key: string; uploadUrl: string; headers: Record<string, string> }>(await requestUpload(exchangeId));
+    const second = await body<{ key: string }>(await requestUpload(exchangeId));
+
+    expect(first.key).toMatch(KEY_PATTERN);
+    expect(first.key.startsWith(`exchanges/${exchangeId}/items/`)).toBe(true);
+    expect(second.key).not.toBe(first.key);
+    expect(first.uploadUrl).toContain(first.key);
+    expect(first.headers).toEqual({ "Content-Type": "image/webp", "Cache-Control": "public, max-age=31536000, immutable" });
   });
 
-  it("stores a real image and lets the wishlist use its URL", async () => {
-    withBlobToken();
-    const { slug } = await createExchange();
-    const response = await upload(slug, JPEG);
-    expect(response.status).toBe(201);
-    const { url } = await body<{ url: string }>(response);
-
-    const submit = await call(participantsRoutes.POST, { slug }, {
-      body: { firstName: "Mia", lastName: "Cruz", items: [{ name: "Bag", priceCentavos: 100, imageUrl: url }] },
-    });
-    expect(submit.status).toBe(201);
-    vi.unstubAllEnvs();
+  it("refuses other file types and anything over 5 MB", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    expect((await requestUpload(exchangeId, "application/pdf")).status).toBe(415);
+    expect((await requestUpload(exchangeId, "image/heic")).status).toBe(415);
+    expect((await requestUpload(exchangeId, "image/jpeg", MB5 + 1)).status).toBe(413);
+    expect((await requestUpload(exchangeId, "image/png", MB5)).status).toBe(201);
   });
 
-  it("rejects a photo uploaded to a different exchange", async () => {
-    withBlobToken();
-    const first = await createExchange();
-    const second = await createExchange();
-    const { url } = await body<{ url: string }>(await upload(first.slug, JPEG));
-    const submit = await call(participantsRoutes.POST, { slug: second.slug }, {
-      body: { firstName: "Mia", lastName: "Cruz", items: [{ name: "Bag", priceCentavos: 100, imageUrl: url }] },
-    });
-    expect(await errorCode(submit)).toBe("invalid_image");
-    vi.unstubAllEnvs();
-  });
+  it("refuses unknown exchanges and closes uploads once the pool is locked", async () => {
+    expect((await requestUpload("00000000-0000-4000-8000-000000000000")).status).toBe(404);
 
-  it("judges a file by its bytes, not its claimed type", async () => {
-    withBlobToken();
-    const { slug } = await createExchange();
-    expect((await upload(slug, [0x3c, 0x73, 0x76, 0x67, 1, 2, 3, 4, 5, 6, 7, 8], "image/png")).status).toBe(415);
-    vi.unstubAllEnvs();
-  });
-
-  it("rejects oversized files", async () => {
-    withBlobToken();
-    const { slug } = await createExchange();
-    const huge = new Uint8Array(1_500_001);
-    huge.set(JPEG);
-    expect((await upload(slug, huge)).status).toBe(413);
-    vi.unstubAllEnvs();
-  });
-
-  it("closes uploads when the pool locks", async () => {
-    withBlobToken();
     const { slug, cookie } = await setUp();
     await call(poolRoute, { slug }, { body: { action: "lock" }, cookie });
-    expect((await upload(slug, JPEG)).status).toBe(409);
-    vi.unstubAllEnvs();
+    const response = await requestUpload(await exchangeIdOf(slug));
+    expect(response.status).toBe(409);
+    expect(await errorCode(response)).toBe("pool_locked");
+  });
+
+  it("confirms a real photo and returns its public URL", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    const { key } = await body<{ key: string }>(await requestUpload(exchangeId));
+    browserPut(key, WEBP);
+    const confirmed = await body<{ key: string; url: string }>(await confirm(key));
+    expect(confirmed).toEqual({ key, url: `https://br-test.storage.c-3.ap-southeast-1.aws.neon.tech/wishlist-photos/${key}` });
+  });
+
+  it("says when the upload never arrived", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    const { key } = await body<{ key: string }>(await requestUpload(exchangeId));
+    const response = await confirm(key);
+    expect(response.status).toBe(422);
+    expect(await errorCode(response)).toBe("photo_missing");
+  });
+
+  it("deletes a file over 5 MB sent straight to the upload URL", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    const { key } = await body<{ key: string }>(await requestUpload(exchangeId));
+    const huge = new Uint8Array(MB5 + 1);
+    huge.set(WEBP);
+    browserPut(key, huge);
+
+    expect((await confirm(key)).status).toBe(413);
+    expect(storage.objects.has(key)).toBe(false);
+    expect(await db.select().from(schema.photoUploads).where(eq(schema.photoUploads.key, key))).toHaveLength(0);
+  });
+
+  it("deletes a PDF renamed to look like a picture", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    const { key } = await body<{ key: string }>(await requestUpload(exchangeId, "image/jpeg"));
+    browserPut(key, PDF, "image/jpeg");
+
+    expect((await confirm(key)).status).toBe(415);
+    expect(storage.objects.has(key)).toBe(false);
+  });
+
+  it("refuses keys it never handed out", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    const madeUp = `exchanges/${exchangeId}/items/11111111-1111-4111-8111-111111111111.webp`;
+    browserPut(madeUp, WEBP);
+    expect((await confirm(madeUp)).status).toBe(422);
+    expect((await confirm("../../etc/passwd")).status).toBe(422);
+  });
+
+  it("saves the key with the wishlist and shows the photo in the envelope", async () => {
+    const { slug, cookie } = await createExchange();
+    const key = await uploadedPhoto(await exchangeIdOf(slug));
+    const mia = await submitWithPhoto(slug, "Mia Cruz", key);
+    expect(mia.status).toBe(201);
+
+    const [saved] = await db.select().from(schema.wishlistItems).innerJoin(schema.participants, eq(schema.participants.id, schema.wishlistItems.participantId)).where(eq(schema.participants.firstName, "Mia"));
+    expect(saved.wishlist_items.imageKey).toBe(key);
+
+    const others = [];
+    for (const name of ["Ana Reyes", "Ben Santos", "Carla Lim"]) others.push(await join(slug, name));
+    await call(poolRoute, { slug }, { body: { action: "lock" }, cookie });
+    await call(drawRoute, { slug }, { cookie });
+
+    const views = await Promise.all(
+      others.map(async (person) => body<EnvelopeView>(await call(envelopeRoute, { slug }, { body: { participantId: person.participantId, code: person.elfCode } }))),
+    );
+    const miaGiver = views.find((view) => view.state === "ready" && view.recipientName === "Mia Cruz");
+    if (miaGiver?.state !== "ready") throw new Error("someone should be giving to Mia");
+    expect(miaGiver.items[0].imageUrl).toBe(`https://br-test.storage.c-3.ap-southeast-1.aws.neon.tech/wishlist-photos/${key}`);
+    expect(Object.keys(miaGiver.items[0])).not.toContain("imageKey");
+  });
+
+  it("locks a photo once its wishlist is submitted", async () => {
+    const { slug } = await createExchange();
+    const key = await uploadedPhoto(await exchangeIdOf(slug));
+    await submitWithPhoto(slug, "Mia Cruz", key);
+
+    const removal = await call(deletePhotoRoute, {}, { body: { key } });
+    expect(removal.status).toBe(409);
+    expect(storage.objects.has(key)).toBe(true);
+
+    const reuse = await submitWithPhoto(slug, "Leo Tan", key);
+    expect(await errorCode(reuse)).toBe("invalid_image");
+  });
+
+  it("refuses photos that weren't confirmed or belong to another exchange", async () => {
+    const { slug } = await createExchange();
+    const exchangeId = await exchangeIdOf(slug);
+    const { key: unconfirmed } = await body<{ key: string }>(await requestUpload(exchangeId));
+    browserPut(unconfirmed, WEBP);
+    expect(await errorCode(await submitWithPhoto(slug, "Mia Cruz", unconfirmed))).toBe("invalid_image");
+
+    const other = await createExchange();
+    const theirs = await uploadedPhoto(await exchangeIdOf(other.slug));
+    expect(await errorCode(await submitWithPhoto(slug, "Mia Cruz", theirs))).toBe("invalid_image");
+
+    // Nothing was saved, so Mia can still join without a photo.
+    expect((await join(slug, "Mia Cruz")).name).toBe("Mia Cruz");
+  });
+
+  it("removes a replaced photo before the wishlist is submitted", async () => {
+    const exchangeId = await exchangeIdOf((await createExchange()).slug);
+    const key = await uploadedPhoto(exchangeId);
+    expect((await call(deletePhotoRoute, {}, { body: { key } })).status).toBe(200);
+    expect(storage.objects.has(key)).toBe(false);
+    expect(await db.select().from(schema.photoUploads).where(eq(schema.photoUploads.key, key))).toHaveLength(0);
+  });
+
+  it("cleans up abandoned uploads after 48 hours, but never submitted ones", async () => {
+    const { slug } = await createExchange();
+    const exchangeId = await exchangeIdOf(slug);
+    const kept = await uploadedPhoto(exchangeId);
+    await submitWithPhoto(slug, "Mia Cruz", kept);
+    const abandoned = await uploadedPhoto(exchangeId);
+    const recent = await uploadedPhoto(exchangeId);
+    await client.query(`UPDATE photo_uploads SET created_at = now() - interval '49 hours' WHERE key IN ($1, $2)`, [kept, abandoned]);
+
+    vi.stubEnv("CRON_SECRET", "cron-test-secret");
+    try {
+      expect((await call(cleanupRoute, {}, { method: "GET" })).status).toBe(401);
+
+      const request = new Request("http://test.local/api", { headers: { authorization: "Bearer cron-test-secret" } });
+      const response = await cleanupRoute(request, { params: Promise.resolve({}) });
+      expect(response.status).toBe(200);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(storage.objects.has(abandoned)).toBe(false);
+    expect(storage.objects.has(kept)).toBe(true);
+    expect(storage.objects.has(recent)).toBe(true);
+  });
+
+  it("refuses the cleanup when no cron secret is configured", async () => {
+    const request = new Request("http://test.local/api", { headers: { authorization: "Bearer " } });
+    expect((await cleanupRoute(request, { params: Promise.resolve({}) })).status).toBe(401);
   });
 });
 

@@ -9,7 +9,7 @@ export default async function JoinPage({ params }: PageProps<"/x/[slug]/join">) 
   if (!exchange) notFound();
 
   return exchange.status === "open" ? (
-    <WishlistFormLoader slug={slug} budgetCentavos={exchange.budgetHintCentavos} exchangeName={exchange.name} />
+    <WishlistFormLoader slug={slug} exchangeId={exchange.id} budgetCentavos={exchange.budgetHintCentavos} exchangeName={exchange.name} />
   ) : (
     <JoinClosed slug={slug} name={exchange.name} />
   );

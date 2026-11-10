@@ -11,6 +11,7 @@ import { formatPeso } from "@/lib/money";
 import { normalizeNamePart } from "@/lib/names";
 import type { EnvelopeView, PublicParticipant } from "@/lib/types";
 import { CODE_LENGTH, CodeEntry } from "./code-entry";
+import { ItemPhoto } from "./item-photo";
 import { Avatar } from "./people";
 import { StoreLink } from "./store-chip";
 import { Button, Dialog, ErrorNote, Field, inputClass, LinkButton, Paper } from "./ui";
@@ -230,9 +231,13 @@ function Reveal({ envelope, onClose }: { envelope: Ready; onClose: () => void })
             <Paper>
               <div className="flex flex-col gap-4 md:flex-row">
                 {item.imageUrl && (
-                  // Blob photos are already compressed client-side, so next/image would only add cost.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.imageUrl} alt={item.name} loading="lazy" className="aspect-square w-full rounded-tile object-cover md:w-48" />
+                  <ItemPhoto
+                    zoomable
+                    src={item.imageUrl}
+                    alt={item.name}
+                    sizes="(min-width: 768px) 12rem, 100vw"
+                    className="aspect-square w-full shrink-0 rounded-tile md:w-48"
+                  />
                 )}
                 <div className="grid min-w-0 flex-1 content-start gap-2">
                   <h3 className="font-display text-3xl font-semibold wrap-anywhere">{item.name}</h3>

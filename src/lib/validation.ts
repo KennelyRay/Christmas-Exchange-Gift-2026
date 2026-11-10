@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PHOTO_KEY_PATTERN } from "./photos";
 import { isWebUrl } from "./stores";
 
 export const MAX_ITEMS = 20;
@@ -35,8 +36,16 @@ export const wishlistItemSchema = z.object({
   name: plainText("Item name", 120),
   priceCentavos: centavos.nullable().optional(),
   url: webUrl.nullable().optional(),
-  imageUrl: z.string().url().max(2048).nullable().optional(),
+  imageKey: z.string().regex(PHOTO_KEY_PATTERN, "That photo didn't upload properly. Please add it again.").nullable().optional(),
 });
+
+export const photoUploadRequestSchema = z.object({
+  exchangeId: z.uuid(),
+  contentType: z.string().max(100),
+  size: z.number().int().nonnegative(),
+});
+
+export const photoKeySchema = z.object({ key: z.string().max(200) });
 
 const personName = (label: string) =>
   plainText(label, 40)

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { defaultRevealAt, fromManilaInputValue, nextChristmas, timeParts, toManilaInputValue } from "./christmas";
 import { slugFromLink } from "./exchange-link";
+import { exchangeIdOfPhotoKey } from "./photos";
+import { regionFromEndpoint, sniffPhotoType } from "@/server/storage";
 import { buildManifest, isSingleLoop, parseManifest } from "./manifest";
 import { formatPeso, parsePesoToCentavos } from "./money";
 import { isWebUrl, normalizeWebUrl, storeNameFor } from "./stores";
@@ -181,6 +183,37 @@ describe("codes", () => {
     expect(await verifyCode(" Snow FROST  holly\nivy ", hash)).toBe(true);
     expect(await verifyCode("snow-frost-holly-pine", hash)).toBe(false);
     expect(normalizeCode("a b")).toBe("a-b");
+  });
+});
+
+describe("photo keys and storage", () => {
+  const exchange = "3f2b8c1e-4d5a-4e6f-9a7b-8c9d0e1f2a3b";
+  const item = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
+  it("accepts only keys in the exact shape the server hands out", () => {
+    expect(exchangeIdOfPhotoKey(`exchanges/${exchange}/items/${item}.webp`)).toBe(exchange);
+    expect(exchangeIdOfPhotoKey(`exchanges/${exchange}/items/${item}.jpg`)).toBe(exchange);
+    for (const bad of [
+      `exchanges/${exchange}/items/${item}.gif`,
+      `exchanges/${exchange}/items/../${item}.webp`,
+      `exchanges/${exchange}/other/${item}.webp`,
+      `/exchanges/${exchange}/items/${item}.webp`,
+      `https://evil.example/exchanges/${exchange}/items/${item}.webp`,
+    ]) {
+      expect(exchangeIdOfPhotoKey(bad)).toBeNull();
+    }
+  });
+
+  it("reads the region from a Neon storage endpoint", () => {
+    expect(regionFromEndpoint("https://br-winter-pond-aptw82ef.storage.c-2.us-east-2.aws.neon.tech")).toBe("us-east-2");
+    expect(regionFromEndpoint("https://br-x.storage.c-3.ap-southeast-1.aws.neon.tech/")).toBe("ap-southeast-1");
+    expect(regionFromEndpoint("http://localhost:3999")).toBeUndefined();
+  });
+
+  it("judges an upload by its bytes", () => {
+    expect(sniffPhotoType(new Uint8Array([0xff, 0xd8, 0xff, 0xe1]))).toBe("image/jpeg");
+    expect(sniffPhotoType(new TextEncoder().encode("RIFF1234WEBPVP8 "))).toBe("image/webp");
+    expect(sniffPhotoType(new TextEncoder().encode("%PDF-1.7"))).toBeNull();
   });
 });
 

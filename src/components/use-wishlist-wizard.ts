@@ -7,25 +7,34 @@ import { friendlyError, useT, type Translate } from "@/lib/i18n";
 import { parsePesoToCentavos } from "@/lib/money";
 import { fullNameOf } from "@/lib/names";
 import { joinedNameKey } from "@/lib/stage";
+import { discardPhoto } from "@/lib/photo-upload";
+import type { UploadedPhoto } from "@/lib/photos";
 import { normalizeWebUrl } from "@/lib/stores";
 import { wishlistItemSchema, wishlistSubmissionSchema } from "@/lib/validation";
 
-export type Draft = { key: string; name: string; price: string; url: string; imageUrl: string | null };
+export type Draft = { key: string; name: string; price: string; url: string; photo: UploadedPhoto | null };
 export type Step = 1 | 2 | 3 | 4;
 export type Errors = Record<string, string>;
 
 export const TOTAL_STEPS = 4;
 
-export const newItem = (): Draft => ({ key: crypto.randomUUID(), name: "", price: "", url: "", imageUrl: null });
-export const isBlank = (item: Draft) => !item.name.trim() && !item.price.trim() && !item.url.trim() && !item.imageUrl;
+export const newItem = (): Draft => ({ key: crypto.randomUUID(), name: "", price: "", url: "", photo: null });
+export const isBlank = (item: Draft) => !item.name.trim() && !item.price.trim() && !item.url.trim() && !item.photo;
 
 type SavedDraft = { firstName: string; lastName: string; items: Draft[]; editor: Draft | null; editing: boolean; step: Step };
+
+/** Drafts saved before photos moved to Neon carried a Blob URL that never worked; it's dropped. */
+function restoreItem(saved: Draft & { imageUrl?: unknown }): Draft {
+  const photo = saved.photo && typeof saved.photo.key === "string" && typeof saved.photo.url === "string" ? saved.photo : null;
+  return { key: saved.key, name: saved.name ?? "", price: saved.price ?? "", url: saved.url ?? "", photo };
+}
 
 function loadDraft(storageKey: string, autoOpenEditor: boolean): SavedDraft {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") as Partial<SavedDraft> | null;
     if (saved) {
-      const items = Array.isArray(saved.items) ? saved.items.filter((item) => !isBlank(item)) : [];
+      const items = Array.isArray(saved.items) ? saved.items.map(restoreItem).filter((item) => !isBlank(item)) : [];
+      if (saved.editor) saved.editor = restoreItem(saved.editor);
       const editing = autoOpenEditor ? (saved.editing ?? items.length === 0) : Boolean(saved.editing && saved.editor && !isBlank(saved.editor));
       return {
         firstName: saved.firstName ?? "",
@@ -172,6 +181,7 @@ export function useWishlistWizard({ slug, autoOpenEditor, heading }: { slug: str
     if (!target) return;
     const remaining = items.filter((item) => item.key !== target.key);
     setItems(remaining);
+    if (target.photo) discardPhoto(target.photo.key);
     setRemoving(null);
     if (editor?.key === target.key) {
       setEditor(null);
@@ -230,7 +240,7 @@ export function useWishlistWizard({ slug, autoOpenEditor, heading }: { slug: str
       const [, index, field] = itemField.split(".");
       const item = items[Number(index)];
       if (item) {
-        const target = field === "priceCentavos" ? "price" : field;
+        const target = field === "priceCentavos" ? "price" : field === "imageKey" ? "photo" : field;
         openEditor(item, { [target]: error.fields[itemField] });
         return;
       }
@@ -256,7 +266,7 @@ export function useWishlistWizard({ slug, autoOpenEditor, heading }: { slug: str
           name: item.name,
           priceCentavos: parsePesoToCentavos(item.price),
           url: item.url.trim() ? normalizeWebUrl(item.url) : null,
-          imageUrl: item.imageUrl,
+          imageKey: item.photo?.key ?? null,
         })),
       };
       const { elfCode: code } = await api<{ elfCode: string }>(`/api/exchanges/${slug}/participants`, { body: payload });
